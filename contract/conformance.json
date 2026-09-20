@@ -114,6 +114,27 @@
         }
       ]
     },
+    "workbook_with_a_form": {
+      "kind": "excel-macro-workbook",
+      "file_name": "Forms.xlsm",
+      "why": "A workbook holding a UserForm, which is two things that have to agree: a designer storage and a code module of the same name. Every case about keeping them together needs one.",
+      "forms": [
+        {
+          "name": "Wizard",
+          "caption": "Setup",
+          "width": 300,
+          "height": 200,
+          "controls": [
+            {
+              "type": "CommandButton",
+              "name": "Ok",
+              "left": 12,
+              "top": 12
+            }
+          ]
+        }
+      ]
+    },
     "shapes_workbook": {
       "kind": "shipped-binary",
       "file_name": "Shapes.xlsm",
@@ -133,7 +154,7 @@
       ]
     }
   },
-  "case_count": 54,
+  "case_count": 59,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -1341,6 +1362,125 @@
         {
           "path": "modules",
           "not_contains": "Helpers"
+        }
+      ]
+    },
+    {
+      "id": "forms.a-userforms-module-is-not-a-class",
+      "why": "A UserForm's module is a class as far as its text goes; what makes it a form is the designer storage beside it. Reading the kind from the text alone calls every form a class, and a class is a thing this server will happily rename.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "workbook_with_a_form",
+      "expect": [
+        {
+          "path": "modules",
+          "contains": "\"kind\": \"userform\""
+        }
+      ]
+    },
+    {
+      "id": "forms.renaming-a-userforms-module-is-refused",
+      "why": "Renaming only the module leaves a storage with no module, which the host does not show, and a module with no storage, which is a class. The form has silently gone and the file still opens, so nothing tells the user.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_rename_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Wizard",
+            "new_name": "Renamed"
+          },
+          "error_contains": "design"
+        }
+      ],
+      "fixture": "workbook_with_a_form"
+    },
+    {
+      "id": "forms.deleting-a-userforms-module-is-refused",
+      "why": "Deleting only the module leaves the designer storage behind entirely, with the same silent result.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_delete_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Wizard"
+          },
+          "error_contains": "orphaned"
+        }
+      ],
+      "fixture": "workbook_with_a_form"
+    },
+    {
+      "id": "forms.creating-one-writes-both-halves",
+      "why": "A module with no storage is a class rather than a form, which is why creating a form is its own tool rather than a write of an empty module.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_form",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "create",
+            "form_name": "Setup",
+            "caption": "Set it up"
+          }
+        },
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "modules",
+          "contains": "\"name\": \"Setup\""
+        },
+        {
+          "path": "modules",
+          "contains": "\"kind\": \"userform\""
+        }
+      ]
+    },
+    {
+      "id": "forms.an-access-design-renames-with-its-code",
+      "why": "Access moves the design and its module together, which is why renaming is allowed there and refused for a UserForm. The same operation is not the same operation on every host.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_form",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "rename",
+            "form_name": "Summary",
+            "new_name": "Totals"
+          }
+        },
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "access_designs",
+      "expect": [
+        {
+          "path": "modules",
+          "contains": "Form_Totals"
+        },
+        {
+          "path": "modules",
+          "not_contains": "Form_Summary"
         }
       ]
     },

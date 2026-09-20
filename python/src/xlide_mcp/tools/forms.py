@@ -112,6 +112,91 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
     @server.tool(
+        name="xlide_manage_form",
+        title="Create, rename or delete a form",
+        annotations=writes("Create, rename or delete a form", destructive=True),
+        description=(
+            "Creates a UserForm, or an Access form or report, and saves the file. A form is "
+            "a designer storage and a code module of the same name, and this writes both, "
+            "which is why it exists rather than xlide_write_module. Renaming and deleting "
+            "work on Access designs, where both halves move together; for a UserForm they "
+            "are refused, because nothing here can move the designer storage and doing half "
+            "of it loses the form. Add controls afterwards with xlide_edit_form, and write "
+            "its event procedures with xlide_write_module."
+        ),
+    )
+    def manage_form(
+        file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
+        action: Annotated[str, Field(description="'create', 'rename' or 'delete'.")],
+        form_name: Annotated[str, Field(description="The form or report to act on.")],
+        new_name: Annotated[
+            str, Field(default="", description="For rename: the new name.")
+        ] = "",
+        design: Annotated[
+            str,
+            Field(
+                default="form",
+                description="For create in Access: 'form' or 'report'. Elsewhere, a form.",
+            ),
+        ] = "form",
+        caption: Annotated[
+            str, Field(default="", description="For create: the caption it opens with.")
+        ] = "",
+        width: Annotated[
+            float,
+            Field(default=0.0, description="For create. Points for a UserForm, twips for Access."),
+        ] = 0.0,
+        height: Annotated[float, Field(default=0.0, description="For create.")] = 0.0,
+        allow_protected: Annotated[
+            bool, Field(default=False, description="Ask the user first.")
+        ] = False,
+        allow_invalidate_signature: Annotated[
+            bool, Field(default=False, description="Ask the user first.")
+        ] = False,
+    ) -> dict[str, Any]:
+        require_writable(settings, "xlide_manage_form")
+        path = resolve_path(file_path, settings)
+        info = require_readable(path)
+        if not info.supports_forms:
+            raise ToolError(
+                f"{info.title} projects have no form designer surface here. A Visual Basic 6 "
+                "form's design is text in its own .frm file."
+            )
+        wanted = (action or "").strip().lower()
+        if wanted not in {"create", "rename", "delete"}:
+            raise ToolError("action must be 'create', 'rename' or 'delete'.")
+        wanted_design = (design or "form").strip().lower()
+        if wanted_design not in {"form", "report"}:
+            raise ToolError("design must be 'form' or 'report'.")
+        if wanted_design == "report" and info.host != "access":
+            raise ToolError(f"Reports exist in Access databases; {path.name} is {info.title}.")
+
+        with project_layer.open_project(path, info) as handle:
+            detail = _manage(handle, info, wanted, form_name, new_name, wanted_design,
+                             caption, width, height)
+            save_warnings = project_layer.save(
+                handle,
+                info,
+                allow_protected=allow_protected,
+                allow_invalidate_signature=allow_invalidate_signature,
+            )
+
+        result: dict[str, Any] = {
+            "path": str(path),
+            "action": wanted,
+            "saved": True,
+            **detail,
+        }
+        if save_warnings:
+            result["warnings"] = save_warnings
+        if wanted == "create":
+            result["next_step"] = (
+                "Add controls with xlide_edit_form, and write the event procedures with "
+                f"xlide_write_module on the module named {detail.get('form', form_name)!r}."
+            )
+        return result
+
+    @server.tool(
         name="xlide_edit_form",
         title="Edit form design",
         annotations=writes("Edit form design", destructive=True),
@@ -272,6 +357,81 @@ def register(server: MCPServer, settings: Settings) -> None:
         if save_warnings:
             result["warnings"] = save_warnings
         return result
+
+
+def _manage(
+    handle: Any,
+    info: Any,
+    action: str,
+    form_name: str,
+    new_name: str,
+    design: str,
+    caption: str,
+    width: float,
+    height: float,
+) -> dict[str, Any]:
+    """Create, rename or delete a design, or refuse with the reason it cannot."""
+    name = (form_name or "").strip()
+    if not name:
+        raise ToolError("form_name is required.")
+
+    if action == "create":
+        if any(f.name.casefold() == name.casefold() for f in _forms(handle, info.title)):
+            raise ToolError(f"A form or report named {name!r} already exists in this file.")
+        options: dict[str, Any] = {}
+        if caption:
+            options["caption"] = caption
+        # A UserForm is measured in points and an Access design in twips, so the
+        # number is passed through in whichever unit the host counts in.
+        if width:
+            options["width"] = int(width) if info.host == "access" else width
+        if height:
+            options["height"] = int(height) if info.host == "access" else height
+        maker = handle.add_report if design == "report" else handle.add_form
+        try:
+            created = maker(name, **options)
+        except Exception as exc:
+            raise ToolError(f"The {design} could not be created: {exc}") from exc
+        return {"form": created.name, "design": design, "created": True}
+
+    # Renaming and deleting have to move the designer storage and the code
+    # module together. Access does; nothing here can for a UserForm.
+    if info.host != "access":
+        raise ToolError(
+            f"A UserForm's design is stored beside its code, and this server cannot move "
+            f"the design, so {action} would lose the form. Ask the user to do it in the "
+            f"{info.title} editor. Its code can still be written with xlide_write_module."
+        )
+
+    found = next(
+        (f for f in _forms(handle, info.title) if f.name.casefold() == name.casefold()), None
+    )
+    if found is None:
+        listed = ", ".join(f.name for f in _forms(handle, info.title)) or "(none)"
+        raise ToolError(f"No form or report named {name!r}. In this file: {listed}.")
+    kind = _design_kind(found)
+
+    if action == "rename":
+        if not new_name.strip():
+            raise ToolError("new_name is required for action='rename'.")
+        rename = handle.rename_report if kind == "report" else handle.rename_form
+        try:
+            rename(found.name, new_name.strip())
+        except Exception as exc:
+            raise ToolError(f"The {kind} could not be renamed: {exc}") from exc
+        return {
+            "renamed_from": found.name,
+            "renamed_to": new_name.strip(),
+            "design": kind,
+            "form": new_name.strip(),
+        }
+
+    remove = handle.delete_report if kind == "report" else handle.delete_form
+    try:
+        remove(found.name)
+    except Exception as exc:
+        raise ToolError(f"The {kind} could not be deleted: {exc}") from exc
+    return {"deleted": found.name, "design": kind}
 
 
 def _forms(handle: Any, host_title: str) -> list[Any]:

@@ -221,6 +221,26 @@ FIXTURES: dict[str, Any] = {
             }
         ],
     },
+    "workbook_with_a_form": {
+        "kind": "excel-macro-workbook",
+        "file_name": "Forms.xlsm",
+        "why": (
+            "A workbook holding a UserForm, which is two things that have to agree: a "
+            "designer storage and a code module of the same name. Every case about keeping "
+            "them together needs one."
+        ),
+        "forms": [
+            {
+                "name": "Wizard",
+                "caption": "Setup",
+                "width": 300,
+                "height": 200,
+                "controls": [
+                    {"type": "CommandButton", "name": "Ok", "left": 12, "top": 12}
+                ],
+            }
+        ],
+    },
     "shapes_workbook": {
         "kind": "shipped-binary",
         "file_name": "Shapes.xlsm",
@@ -1164,6 +1184,101 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "modules", "contains": "Tools"},
                 {"path": "modules", "not_contains": "Helpers"},
+            ],
+        )
+    )
+
+    # -------------------------------------------------------------- form life
+    out.append(
+        case(
+            "forms.a-userforms-module-is-not-a-class",
+            "A UserForm's module is a class as far as its text goes; what makes it a form is "
+            "the designer storage beside it. Reading the kind from the text alone calls every "
+            "form a class, and a class is a thing this server will happily rename.",
+            "workbook_with_a_form",
+            [step("xlide_list_modules", {"file_path": "${fixture}"})],
+            [{"path": "modules", "contains": '"kind": "userform"'}],
+        )
+    )
+    out.append(
+        case(
+            "forms.renaming-a-userforms-module-is-refused",
+            "Renaming only the module leaves a storage with no module, which the host does "
+            "not show, and a module with no storage, which is a class. The form has silently "
+            "gone and the file still opens, so nothing tells the user.",
+            "workbook_with_a_form",
+            [
+                step(
+                    "xlide_rename_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Wizard",
+                        "new_name": "Renamed",
+                    },
+                    error_contains="design",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "forms.deleting-a-userforms-module-is-refused",
+            "Deleting only the module leaves the designer storage behind entirely, with the "
+            "same silent result.",
+            "workbook_with_a_form",
+            [
+                step(
+                    "xlide_delete_module",
+                    {"file_path": "${fixture}", "module_name": "Wizard"},
+                    error_contains="orphaned",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "forms.creating-one-writes-both-halves",
+            "A module with no storage is a class rather than a form, which is why creating a "
+            "form is its own tool rather than a write of an empty module.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_form",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "create",
+                        "form_name": "Setup",
+                        "caption": "Set it up",
+                    },
+                ),
+                step("xlide_list_modules", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "modules", "contains": '"name": "Setup"'},
+             {"path": "modules", "contains": '"kind": "userform"'}],
+        )
+    )
+    out.append(
+        case(
+            "forms.an-access-design-renames-with-its-code",
+            "Access moves the design and its module together, which is why renaming is "
+            "allowed there and refused for a UserForm. The same operation is not the same "
+            "operation on every host.",
+            "access_designs",
+            [
+                step(
+                    "xlide_manage_form",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "rename",
+                        "form_name": "Summary",
+                        "new_name": "Totals",
+                    },
+                ),
+                step("xlide_list_modules", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "modules", "contains": "Form_Totals"},
+                {"path": "modules", "not_contains": "Form_Summary"},
             ],
         )
     )

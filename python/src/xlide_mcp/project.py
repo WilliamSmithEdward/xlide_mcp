@@ -103,12 +103,38 @@ class ProjectStatus:
         return out
 
 
+def form_module_names(handle: Any, info: HostInfo) -> set[str]:
+    """The modules that are the code behind a design, folded for comparison.
+
+    A UserForm's module is a class as far as its text is concerned: what makes it
+    a form is the designer storage beside it, which the text cannot see. Reading
+    the kind from the text alone calls every form a class, and a class is a thing
+    this server will happily rename - which silently separates the form from its
+    code.
+
+    Access needs no such lookup: it names a design's module `Form_X` or
+    `Report_X`, and reading its designs to answer a module listing would be work
+    for nothing.
+    """
+    if info.host == "access":
+        return set()
+    try:
+        return {form.name.casefold() for form in handle.forms()}
+    except Exception:
+        return set()
+
+
+def _access_design_module(name: str) -> bool:
+    return name.casefold().startswith(("form_", "report_"))
+
+
 def read_modules(handle: Any, info: HostInfo) -> list[ModuleView]:
     """Every module in an open project, in the project's own order."""
     import pyopenvba
     from pyopenvba.vba import split_attribute_header
     from pyvbaanalysis.reader import classify_module_kind
 
+    form_names = form_module_names(handle, info)
     views: list[ModuleView] = []
     for component in _components(handle):
         try:
@@ -121,15 +147,18 @@ def read_modules(handle: Any, info: HostInfo) -> list[ModuleView]:
         # A VB6 component knows exactly what it is, because the project manifest
         # said so. Classifying it from its text would turn a form into a class.
         declared = getattr(component, "xlide_kind", "")
-        kind_value = (
-            _VB6_KINDS.get(declared, declared)
-            if declared
-            else classify_module_kind(
+        if declared:
+            kind_value = _VB6_KINDS.get(declared, declared)
+        elif component.name.casefold() in form_names or (
+            info.host == "access" and _access_design_module(component.name)
+        ):
+            kind_value = "userform"
+        else:
+            kind_value = classify_module_kind(
                 source,
                 extension=info.extension,
                 pyopenvba_standard=is_standard_component(component),
             ).value
-        )
         # The attribute header is what the VBE hides, so the body is what an agent
         # should be reading and editing. pyvbaanalysis keeps attributes instead,
         # because to its parser they are ordinary module statements; that is the

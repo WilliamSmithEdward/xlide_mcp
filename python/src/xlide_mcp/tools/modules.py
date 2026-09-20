@@ -392,6 +392,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "it by name. Renaming it would leave the project not matching the file. "
                     "Its code can still be written with xlide_write_module."
                 )
+            _refuse_form_module(module, info, "Renaming")
             _check_new_name(new_name, modules)
             # The project's own rename works on every host, Access included:
             # AccessDatabase.rename_module addresses its design modules, and
@@ -459,6 +460,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                     f"{info.title} owns it. To empty it, write an empty body with "
                     "xlide_write_module."
                 )
+            _refuse_form_module(module, info, "Deleting")
             stale = check_content_token(module.body, expected_content_token, module.name)
             if stale is not None:
                 raise ToolError(stale.message)
@@ -479,6 +481,36 @@ def register(server: MCPServer, settings: Settings) -> None:
         if save_warnings:
             result["warnings"] = save_warnings
         return result
+
+
+def _refuse_form_module(
+    module: project_layer.ModuleView, info: Any, operation: str
+) -> None:
+    """A form's code cannot be renamed or deleted on its own.
+
+    A form is two things that have to agree: a designer storage and a module of
+    the same name. Renaming only the module leaves a storage with no module,
+    which the host does not show, and a module with no storage, which is a class.
+    Deleting only the module leaves the storage behind entirely. Both produce a
+    file where the form has silently gone, and the module tools have no way to
+    move the storage with it.
+    """
+    if module.kind != "userform":
+        return
+    if info.host == "access":
+        design = module.name.split("_", 1)[-1]
+        raise ToolError(
+            f"{module.name} is the code behind the Access design {design!r}. "
+            f"{operation} it on its own would separate the code from the design. "
+            f"Use xlide_manage_form, which moves both together."
+        )
+    raise ToolError(
+        f"{module.name} is a UserForm's code, and its design is stored beside it. "
+        f"{operation} the module alone would leave the design orphaned and the form "
+        "gone from the editor, and this server has no way to move the design with it. "
+        f"Ask the user to do it in the {info.title} editor. Its code can still be "
+        "written with xlide_write_module."
+    )
 
 
 def _check_new_name(name: str, existing: list[project_layer.ModuleView]) -> None:

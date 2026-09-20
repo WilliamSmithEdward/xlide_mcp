@@ -198,6 +198,13 @@ def access_database(workspace: Path) -> Path:
     return path
 
 
+ACCESS_FORM_CODE = """Option Compare Database
+
+Private Sub Form_Load()
+End Sub
+"""
+
+
 @pytest.fixture
 def access_designs(workspace: Path) -> Path:
     """A database holding both kinds of design, which live in separate collections."""
@@ -209,6 +216,9 @@ def access_designs(workspace: Path) -> Path:
         form.add_control(
             "Label", "Title", left=240, top=240, width=2000, height=300, caption="Hello"
         )
+        # A design with code behind it, because that is where the interesting
+        # case is: the module and the design have to move together.
+        form.set_code(ACCESS_FORM_CODE.replace("\n", "\r\n"))
         report = db.add_report("Monthly")
         report.add_control("Label", "Banner", section="PageHeaderSection", caption="Header")
         db.save()
@@ -228,3 +238,16 @@ def vb6_project(workspace: Path) -> Path:
     project = workspace / "Demo.vbp"
     project.write_text(VB6_MANIFEST, encoding="cp1252", newline="")
     return project
+
+
+@pytest.fixture
+def workbook_with_a_form(workspace: Path) -> Path:
+    """A workbook holding a UserForm: a designer storage and a module of one name."""
+    import pyopenvba
+
+    path = workspace / "Forms.xlsm"
+    with pyopenvba.ExcelFile.create_new(path) as book:
+        form = book.add_form("Wizard", caption="Setup", width=300, height=200)
+        form.add_control("CommandButton", "Ok", left=12, top=12)
+        book.save()
+    return path
