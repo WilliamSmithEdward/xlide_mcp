@@ -139,7 +139,7 @@ them whether or not the user configured anything.
 ```bash
 cd python
 pip install -e ".[dev,live]"
-python -m pytest              # 171 tests, no Office needed
+python -m pytest              # 182 tests, no Office needed
 python -m pytest -m live      # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

@@ -1,6 +1,6 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:d78765a6437ea4d06feffb4f3cea57a7079a2a2a88a65b93e68520cb8fe27b23",
+  "digest": "sha256:3bb4c6700ee37a825b5f422737b7db6ede2217da413ff6d54ccc037d5ba78a67",
   "generated_with": {
     "upstream": {
       "pyOpenVBA": "5.2.4",
@@ -279,6 +279,12 @@
             "title": "Allow Protected",
             "type": "boolean"
           },
+          "caption": {
+            "default": "",
+            "description": "For add_control on an Access design: the control's caption.",
+            "title": "Caption",
+            "type": "string"
+          },
           "container": {
             "default": "",
             "description": "For add_control: the Frame or page to put it in.",
@@ -328,6 +334,12 @@
             "default": null,
             "description": "For set_property. null clears it to the default.",
             "title": "Property Value"
+          },
+          "section": {
+            "default": "",
+            "description": "For add_control on an Access design: the band to put it in, such as Detail, PageHeaderSection or PageFooterSection. xlide_list_forms names the ones a design has. Ignored for a UserForm, which has no bands.",
+            "title": "Section",
+            "type": "string"
           },
           "top": {
             "default": 6.0,
@@ -492,7 +504,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the UserForms in an Office file, or the forms and reports in an Access database, with each one's control count. A form's code is a module of the same name, read with xlide_read_module.",
+      "description": "Lists the UserForms in an Office file, or the forms and reports in an Access database, with each one's control count and, for Access, the sections a control can go in. A design's code is a module of the same name, read with xlide_read_module.",
       "input_schema": {
         "properties": {
           "file_path": {

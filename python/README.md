@@ -71,7 +71,7 @@ live layer needs the VBE add-in running.
 ## Test
 
 ```bash
-python -m pytest                 # 171 tests, no Office needed
+python -m pytest                 # 182 tests, no Office needed
 python -m pytest -m live         # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

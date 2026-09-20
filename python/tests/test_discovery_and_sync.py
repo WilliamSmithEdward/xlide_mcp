@@ -303,4 +303,4 @@ def test_unknown_form_names_the_ones_that_exist(
 ) -> None:
     with pytest.raises(ToolFailure) as refusal:
         call("xlide_read_form", file_path=str(workbook), form_name="Nope")
-    assert "No form named" in refusal.value.message
+    assert "No form or report named" in refusal.value.message

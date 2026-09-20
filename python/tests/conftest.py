@@ -196,3 +196,20 @@ def access_database(workspace: Path) -> Path:
         db.vba_project().add_module("Helpers", ACCESS_MODULE.replace("\n", "\r\n"))
         db.save()
     return path
+
+
+@pytest.fixture
+def access_designs(workspace: Path) -> Path:
+    """A database holding both kinds of design, which live in separate collections."""
+    import pyopenvba
+
+    path = workspace / "Designs.accdb"
+    with pyopenvba.AccessDatabase.create_new(path) as db:
+        form = db.add_form("Summary", caption="Totals", width=8000, height=3000)
+        form.add_control(
+            "Label", "Title", left=240, top=240, width=2000, height=300, caption="Hello"
+        )
+        report = db.add_report("Monthly")
+        report.add_control("Label", "Banner", section="PageHeaderSection", caption="Header")
+        db.save()
+    return path

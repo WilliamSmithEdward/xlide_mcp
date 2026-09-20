@@ -125,6 +125,46 @@ FIXTURES: dict[str, Any] = {
             {"name": "Orders", "columns": [{"name": "Id", "type": "long"}]},
         ],
     },
+    "access_designs": {
+        "kind": "access-database",
+        "file_name": "Designs.accdb",
+        "why": (
+            "A database holding both kinds of design, because they live in separate "
+            "collections and a reader that knows about only one reports the other as absent."
+        ),
+        "forms": [
+            {
+                "name": "Summary",
+                "caption": "Totals",
+                "width": 8000,
+                "height": 3000,
+                "controls": [
+                    {
+                        "type": "Label",
+                        "name": "Title",
+                        "left": 240,
+                        "top": 240,
+                        "width": 2000,
+                        "height": 300,
+                        "caption": "Hello",
+                    }
+                ],
+            }
+        ],
+        "reports": [
+            {
+                "name": "Monthly",
+                "controls": [
+                    {
+                        "type": "Label",
+                        "name": "Banner",
+                        "section": "PageHeaderSection",
+                        "caption": "Header",
+                    }
+                ],
+            }
+        ],
+    },
     "shapes_workbook": {
         "kind": "shipped-binary",
         "file_name": "Shapes.xlsm",
@@ -969,6 +1009,50 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "tables", "contains": '"name": "Orders"'},
                 {"path": "tables", "not_contains": "MSys"},
+            ],
+        )
+    )
+
+    out.append(
+        case(
+            "access.reports-are-listed-beside-forms",
+            "Access keeps reports in a collection of their own. A reader that calls forms() "
+            "alone reports every report in every database as not existing, and an agent then "
+            "tells the user their database has none.",
+            "access_designs",
+            [step("xlide_list_forms", {"file_path": "${fixture}"})],
+            [
+                {"path": "count", "equals": 2},
+                {"path": "forms", "contains": '"design": "report"'},
+                {"path": "forms", "contains": '"design": "form"'},
+                {"path": "geometry_unit", "equals": "twips"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "access.a-design-names-the-sections-a-control-can-go-in",
+            "A control on an Access design lives in a band. Without the band names an agent "
+            "has to guess one, and a wrong guess is only refused after the call.",
+            "access_designs",
+            [step("xlide_read_form", {"file_path": "${fixture}", "form_name": "Monthly"})],
+            [
+                {"path": "design", "equals": "report"},
+                {"path": "sections", "contains": "PageHeaderSection"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "access.unnamed-properties-are-counted-not-listed",
+            "An Access design stores more property ids than the library can name: 22 of a "
+            "bare form's 29. Listing `Unidentified314: 4` beside `Caption` buries what a "
+            "reader came for, and hiding them without saying so would be a different lie.",
+            "access_designs",
+            [step("xlide_read_form", {"file_path": "${fixture}", "form_name": "Summary"})],
+            [
+                {"path": "properties", "not_contains": "Unidentified"},
+                {"path": "properties._unnamed_property_count", "at_least": 1},
             ],
         )
     )

@@ -16,6 +16,7 @@ Access, the unit Access keeps. The two are never mixed in one file.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
@@ -36,8 +37,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         annotations=read_only("List forms"),
         description=(
             "Lists the UserForms in an Office file, or the forms and reports in an Access "
-            "database, with each one's control count. A form's code is a module of the same "
-            "name, read with xlide_read_module."
+            "database, with each one's control count and, for Access, the sections a control "
+            "can go in. A design's code is a module of the same name, read with "
+            "xlide_read_module."
         ),
     )
     def list_forms(
@@ -46,10 +48,17 @@ def register(server: MCPServer, settings: Settings) -> None:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
-            forms = _forms(handle, info.title)
-            listed = [
-                {"name": form.name, "controls": len(form.walk())} for form in forms
-            ]
+            listed = []
+            for form in _forms(handle, info.title):
+                entry: dict[str, Any] = {
+                    "name": form.name,
+                    "design": _design_kind(form),
+                    "controls": len(form.walk()),
+                }
+                sections = _sections(form)
+                if sections:
+                    entry["sections"] = sections
+                listed.append(entry)
         return {
             "path": str(path),
             "host": info.host,
@@ -85,16 +94,22 @@ def register(server: MCPServer, settings: Settings) -> None:
         with project_layer.open_project(path, info) as handle:
             form = _find_form(handle, form_name, info.title)
             form_display = form.name
+            design_kind = _design_kind(form)
+            sections = _sections(form)
             controls = [_control(c, include_properties) for c in form.walk()]
             form_properties = _safe_properties(form) if include_properties else {}
-        return {
+        result: dict[str, Any] = {
             "path": str(path),
             "form": form_display,
+            "design": design_kind,
             "geometry_unit": "twips" if info.host == "access" else "points",
             "properties": form_properties,
             "control_count": len(controls),
             "controls": controls,
         }
+        if sections:
+            result["sections"] = sections
+        return result
 
     @server.tool(
         name="xlide_edit_form",
@@ -129,6 +144,24 @@ def register(server: MCPServer, settings: Settings) -> None:
         container: Annotated[
             str,
             Field(default="", description="For add_control: the Frame or page to put it in."),
+        ] = "",
+        section: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "For add_control on an Access design: the band to put it in, such as "
+                    "Detail, PageHeaderSection or PageFooterSection. xlide_list_forms names "
+                    "the ones a design has. Ignored for a UserForm, which has no bands."
+                ),
+            ),
+        ] = "",
+        caption: Annotated[
+            str,
+            Field(
+                default="",
+                description="For add_control on an Access design: the control's caption.",
+            ),
         ] = "",
         left: Annotated[float, Field(default=6.0, description="For add_control.")] = 6.0,
         top: Annotated[float, Field(default=6.0, description="For add_control.")] = 6.0,
@@ -169,14 +202,33 @@ def register(server: MCPServer, settings: Settings) -> None:
                 if wanted == "add_control":
                     if not control_type.strip():
                         raise ToolError("control_type is required for add_control.")
+                    # An Access design places a control in a band and takes its
+                    # caption at creation; a UserForm has neither, and its
+                    # geometry is a float where Access wants twips.
+                    if info.host == "access":
+                        options: dict[str, Any] = {
+                            "left": int(left),
+                            "top": int(top),
+                            "container": container.strip() or None,
+                        }
+                        if section.strip():
+                            options["section"] = section.strip()
+                        if caption:
+                            options["caption"] = caption
+                        if width:
+                            options["width"] = int(width)
+                        if height:
+                            options["height"] = int(height)
+                    else:
+                        options = {
+                            "container": container.strip() or None,
+                            "left": left,
+                            "top": top,
+                            "width": width or None,
+                            "height": height or None,
+                        }
                     control = form.add_control(
-                        control_type.strip(),
-                        control_name.strip(),
-                        container=container.strip() or None,
-                        left=left,
-                        top=top,
-                        width=width or None,
-                        height=height or None,
+                        control_type.strip(), control_name.strip(), **options
                     )
                     detail = {"added": control.name, "type": control_type.strip()}
                 elif wanted == "remove_control":
@@ -223,12 +275,25 @@ def register(server: MCPServer, settings: Settings) -> None:
 
 
 def _forms(handle: Any, host_title: str) -> list[Any]:
+    """Every design in a file: UserForms, or an Access database's forms AND reports.
+
+    Access keeps reports in a collection of their own, so a reader that calls
+    forms() alone reports a database's reports as not existing. They are the same
+    kind of object, they are edited by the same calls, and `kind` tells them apart.
+    """
     try:
-        return list(handle.forms())
+        designs = list(handle.forms())
     except AttributeError as exc:
         raise ToolError(f"{host_title} files do not expose form designs here.") from exc
     except Exception as exc:
         raise ToolError(f"The form designs could not be read: {exc}") from exc
+
+    reports = getattr(handle, "reports", None)
+    if callable(reports):
+        # A database with no reports storage at all: the forms still list.
+        with contextlib.suppress(Exception):
+            designs.extend(reports())
+    return designs
 
 
 def _find_form(handle: Any, name: str, host_title: str) -> Any:
@@ -238,7 +303,20 @@ def _find_form(handle: Any, name: str, host_title: str) -> Any:
         if form.name.casefold() == wanted:
             return form
     listed = ", ".join(f.name for f in forms) or "(none)"
-    raise ToolError(f"No form named {name!r}. Forms in this file: {listed}.")
+    raise ToolError(f"No form or report named {name!r}. In this file: {listed}.")
+
+
+def _design_kind(design: Any) -> str:
+    """'form' or 'report'. A UserForm has no kind and is always a form."""
+    return str(getattr(design, "kind", "") or "form")
+
+
+def _sections(design: Any) -> list[str]:
+    """An Access design's bands. A UserForm has none."""
+    try:
+        return [section.name for section in getattr(design, "sections", []) or []]
+    except Exception:
+        return []
 
 
 def _control(control: Any, include_properties: bool) -> dict[str, Any]:
@@ -253,17 +331,30 @@ def _control(control: Any, include_properties: bool) -> dict[str, Any]:
 
 
 def _safe_properties(owner: Any) -> dict[str, Any]:
-    """Properties as plain JSON. A value the transport cannot carry becomes its text."""
+    """Properties as plain JSON, with the ones nothing can name left out.
+
+    An Access design stores property ids the library has no name for, and it
+    stores a lot of them: 22 of a bare form's 29. Returning `Unidentified314: 4`
+    beside `Caption: "Totals"` buries what a reader came for, and the number is
+    not something an agent can act on. The count is reported instead, so the fact
+    that something is there is not hidden.
+    """
     try:
         raw = owner.properties()
     except Exception:
         return {}
     out: dict[str, Any] = {}
+    unnamed = 0
     for key, value in raw.items():
+        if key.startswith("Unidentified"):
+            unnamed += 1
+            continue
         if isinstance(value, (str, int, float, bool)) or value is None:
             out[key] = value
         elif isinstance(value, bytes):
             out[key] = f"<{len(value)} bytes>"
         else:
             out[key] = str(value)
+    if unnamed:
+        out["_unnamed_property_count"] = unnamed
     return out
