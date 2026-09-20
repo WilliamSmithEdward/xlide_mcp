@@ -25,6 +25,10 @@ keywords = [
     "powerpoint",
     "access",
     "power-query",
+    "macro",
+    "xlsm",
+    "vb6",
+    "spreadsheet",
     "agent",
 ]
 classifiers = [

@@ -2,17 +2,17 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.WilliamSmithEdward/xlide-excel-office-vba-mcp",
   "title": "XLIDE",
-  "description": "Read, write, analyze, test and diff the VBA, forms, Power Query and cells in Office files",
+  "description": "Read, write, analyze, test and diff the VBA in Office files, and the document around it",
   "repository": {
     "url": "https://github.com/WilliamSmithEdward/xlide_mcp",
     "source": "github"
   },
-  "version": "1.0.2",
+  "version": "1.0.3",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "xlide-mcp",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

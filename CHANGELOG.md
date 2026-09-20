@@ -3,6 +3,25 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [1.0.3]
+
+Copy and packaging. No behaviour change: the tool surface, the conformance
+corpus and the contract digest are identical to 1.0.0.
+
+- The registry description drops the enumeration that listed cells beside the
+  VBA and says "the document around it" instead, matching the READMEs. Directory
+  sites copy that line when they ingest the listing, and one had already taken
+  the older wording, so leaving it would have spread further with every site
+  that picked it up next.
+- Roots can be given positionally as well as with `--root`. A launcher that
+  mounts the caller's folders somewhere of its own choosing appends them as
+  plain arguments and cannot repeat a flag in front of each, which made
+  `--root /a /b` exit on the second path rather than start.
+- The Dockerfile splits the root out of the entrypoint and into `CMD`, so a
+  runner passing its own arguments replaces it. A plain `docker run` is
+  unchanged.
+- More PyPI keywords: macro, xlsm, vb6, spreadsheet.
+
 ## [1.0.2]
 
 A findable name in the MCP registry. No behaviour change: the tool surface, the
@@ -115,6 +134,7 @@ cells and document surface inside Office files, and for Visual Basic 6 projects.
 - The document surface is Excel only. Word, PowerPoint and Access reach their
   VBA, forms and catalogs, and their document surfaces follow pyOfficeEditor.
 
+[1.0.3]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.3
 [1.0.2]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.2
 [1.0.1]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.0
