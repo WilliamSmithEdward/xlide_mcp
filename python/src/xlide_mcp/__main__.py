@@ -1,0 +1,118 @@
+"""Command line: `xlide-mcp` and `python -m xlide_mcp`.
+
+stdio is the default, because that is how an MCP client launches a server it owns.
+The HTTP transports are there for a client that connects to a server someone else
+started, and they bind to loopback unless told otherwise: this server reads and
+writes files, and a default that listened on every interface would be handing that
+reach to the network.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from collections.abc import Sequence
+
+from .config import MAX_TIMEOUT_SECONDS, Settings, roots_from_argv
+from .server import __version__, build_server
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="xlide-mcp",
+        description=(
+            "MCP server for the VBA, forms, Power Query and cells inside Office files."
+        ),
+        epilog=(
+            "Every path a tool accepts is resolved inside the roots, so --root is how you "
+            "say which folder an agent may reach."
+        ),
+    )
+    parser.add_argument("--version", action="version", version=f"xlide-mcp {__version__}")
+    parser.add_argument(
+        "--root",
+        action="append",
+        metavar="PATH",
+        help=(
+            "A folder the server may reach. Repeatable, and each value may hold several "
+            "paths separated by the platform's path separator. Defaults to the working "
+            "directory."
+        ),
+    )
+    parser.add_argument(
+        "--read-only",
+        action="store_true",
+        help="Refuse every tool that changes a file. Reads and analysis still work.",
+    )
+    parser.add_argument(
+        "--allow-outside-roots",
+        action="store_true",
+        help="Accept absolute paths anywhere on this machine. Off by default.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        metavar="SECONDS",
+        help=f"Default deadline for a macro or test run. Held at {MAX_TIMEOUT_SECONDS:g}s.",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "streamable-http", "sse"),
+        default="stdio",
+        help="How the client reaches this server. Default: stdio.",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Interface for an HTTP transport. Default: loopback only.",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="Port for an HTTP transport. Default: 8765.",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    settings = Settings.from_environment()
+    roots = roots_from_argv(args.root)
+    if roots:
+        settings = settings.with_roots(roots)
+    if args.read_only:
+        settings = _replace(settings, read_only=True)
+    if args.allow_outside_roots:
+        settings = _replace(settings, allow_outside_roots=True)
+    if args.timeout is not None:
+        settings = _replace(
+            settings, default_timeout=max(1.0, min(MAX_TIMEOUT_SECONDS, args.timeout))
+        )
+
+    server = build_server(settings)
+    if args.transport == "stdio":
+        # Anything written to stdout is protocol, so a stray print would corrupt
+        # the stream. Startup goes to stderr, where a client shows it as a log.
+        print(f"xlide-mcp {__version__} | {settings.describe()}", file=sys.stderr)
+        server.run("stdio")
+        return 0
+
+    server.settings.host = args.host  # type: ignore[attr-defined]
+    server.settings.port = args.port  # type: ignore[attr-defined]
+    print(
+        f"xlide-mcp {__version__} on http://{args.host}:{args.port} | {settings.describe()}",
+        file=sys.stderr,
+    )
+    server.run(args.transport)
+    return 0
+
+
+def _replace(settings: Settings, **changes: object) -> Settings:
+    from dataclasses import replace
+
+    return replace(settings, **changes)  # type: ignore[arg-type]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

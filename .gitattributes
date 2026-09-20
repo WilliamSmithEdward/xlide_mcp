@@ -1,0 +1,8 @@
+# Normalize line endings to LF in the repository and working tree across
+# platforms. Python, JSON and Markdown stay LF everywhere.
+* text=auto eol=lf
+
+# The VBA source inside the conformance corpus is JSON-escaped (\r\n inside
+# string literals), so it survives this untouched. Nothing in the repository
+# stores VBA as raw CRLF text; the fixtures are built at test time, not
+# committed, which is what keeps that true.

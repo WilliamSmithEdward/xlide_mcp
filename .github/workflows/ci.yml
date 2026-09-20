@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: python ${{ matrix.python }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.10", "3.13"]
+    defaults:
+      run:
+        working-directory: python
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: python -m ruff check src tests tools
+
+      - name: Test
+        # The live tests are deselected by the project's own addopts: they start
+        # desktop Office, which no runner has.
+        run: python -m pytest
+
+      # The contract is generated from the implementation, so a tool that changed
+      # without the artifacts changing with it stops the build. Ports are written
+      # against those artifacts; letting them drift silently is what makes a
+      # port's passing suite meaningless.
+      - name: Contract is current
+        run: |
+          python tools/export_contract.py --check
+          python tools/export_conformance.py --check

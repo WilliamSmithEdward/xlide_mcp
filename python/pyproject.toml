@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xlide-mcp"
+# One version, in src/xlide_mcp/_version.py. A release bumps that line and the
+# packaging metadata, the server's version field and the generated contract all
+# follow from it.
+dynamic = ["version"]
+description = "MCP server for the VBA, forms, Power Query and sheets inside Office files"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "William Smith" }]
+keywords = ["mcp", "vba", "office", "excel", "word", "powerpoint", "access", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+    "mcp>=2.0",
+    "pyOpenVBA>=5.2",
+    "pyvbaanalysis>=1.2",
+]
+
+[project.optional-dependencies]
+# Running macros and tests needs Windows with the desktop application installed.
+live = ["pyvbaharness>=1.1 ; sys_platform == 'win32'"]
+dev = [
+    "pytest>=8",
+    "pytest-timeout>=2.3",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+xlide-mcp = "xlide_mcp.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/WilliamSmithEdward/xlide_mcp"
+
+[tool.setuptools.dynamic]
+version = { attr = "xlide_mcp._version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+xlide_mcp = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The live tests start desktop Office applications, so they are opt-in: run them
+# with `pytest -m live`. A default suite that opened Excel would be one nobody
+# runs while they work.
+addopts = "-q -m 'not live'"
+markers = [
+    "live: needs Windows with the desktop Office application installed",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["B008"]

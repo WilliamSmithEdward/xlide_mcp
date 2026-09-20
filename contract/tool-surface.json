@@ -1,0 +1,1342 @@
+{
+  "contract_version": "0.1.0",
+  "digest": "sha256:f9439be4c66a426b090c8cfe86838f8314298a9e23cf3c76efa1aa0225efcd3e",
+  "generated_with": {
+    "upstream": {
+      "pyOpenVBA": "5.2.4",
+      "pyvbaanalysis": "2.1.1",
+      "pyvbaharness": "1.1.2"
+    }
+  },
+  "reference_implementation": "python",
+  "server": {
+    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
+    "name": "xlide"
+  },
+  "tool_count": 34,
+  "tools": [
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Runs static analysis over every VBA module in an Office file and returns the problems with module, line, column, code and message. Needs no Office installation and runs nothing. Each file is measured against its own host's object model, so Word code is never judged by Excel's surface. Call this after every VBA change and treat any problem at error severity as a build failure: fix it and analyze again until it is clean. Warnings are worth reading; some are style, some are the bug.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "min_severity": {
+            "default": "information",
+            "description": "Lowest severity to report: 'error', 'warning' or 'information'.",
+            "title": "Min Severity",
+            "type": "string"
+          },
+          "module_name": {
+            "default": "",
+            "description": "Report only this module's problems. The whole project is still analyzed, so cross-module references still resolve.",
+            "title": "Module Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "analyzeArguments",
+        "type": "object"
+      },
+      "name": "xlide_analyze",
+      "title": "Analyze VBA"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Runs static analysis over VBA source you are holding, before it is written to a file. Use it to check code you have just generated: it costs nothing, needs no file, and catches the compile errors that would otherwise surface in front of the user. Pass host so the code is measured against the right object model, and file_path instead if the code is destined for a file that already exists, which resolves calls into the rest of that project.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "default": "",
+            "description": "An existing Office file this module belongs to. Its other modules are analyzed alongside, so calls into them resolve. Overrides host.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "host": {
+            "default": "",
+            "description": "'excel', 'word', 'powerpoint' or 'access'. Empty checks the language alone, with no host object model.",
+            "title": "Host",
+            "type": "string"
+          },
+          "kind": {
+            "default": "standard",
+            "description": "'standard', 'class', 'document' or 'userform'.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "module_name": {
+            "default": "Module1",
+            "description": "Name to report problems against.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "The VBA source to check.",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "analyze_sourceArguments",
+        "type": "object"
+      },
+      "name": "xlide_analyze_source",
+      "title": "Analyze VBA source"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Asks the real VBA editor to compile a file's project, and reports whether it accepted it. Windows only. This is the compiler's own verdict, where xlide_analyze is a static analyzer's; run the analyzer first, because it is free and needs no Office, and use this when the last word matters. Excel is made visible for the check, because a hidden instance does not surface the compile-error dialog and would report a rejection as a pass.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds to wait for the verdict.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "compile_checkArguments",
+        "type": "object"
+      },
+      "name": "xlide_compile_check",
+      "title": "Compile check"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Creates a new Office file with an empty VBA project at the given absolute path, from a template the application itself authored, so it opens with no repair prompt. Extensions: .xlsm, .xlsb, .xlam, .docm, .pptm, .accdb, and .xlsx for a workbook with Power Query and no macros. It never overwrites an existing file.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to create. The extension picks the format.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "create_projectArguments",
+        "type": "object"
+      },
+      "name": "xlide_create_project",
+      "title": "Create Office file"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Permanently deletes a VBA module from an Office file and saves it. There is no undo: ask the user first, and read the module before deleting it so its code can be put back if they change their mind. Document modules cannot be deleted.",
+      "input_schema": {
+        "properties": {
+          "allow_invalidate_signature": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Invalidate Signature",
+            "type": "boolean"
+          },
+          "allow_protected": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Protected",
+            "type": "boolean"
+          },
+          "expected_content_token": {
+            "default": "",
+            "description": "The content_token from your read, so a module that changed since is not deleted on the strength of a stale look at it.",
+            "title": "Expected Content Token",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "module_name": {
+            "description": "Module to delete.",
+            "title": "Module Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "module_name"
+        ],
+        "title": "delete_moduleArguments",
+        "type": "object"
+      },
+      "name": "xlide_delete_module",
+      "title": "Delete module"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reports what this server can reach: its workspace roots, whether it is read-only, which optional layers are installed, and, on Windows, which Office applications are available to run macros and tests. Call it when a tool reports something missing, or before promising the user a test run.",
+      "input_schema": {
+        "properties": {},
+        "title": "doctorArguments",
+        "type": "object"
+      },
+      "name": "xlide_doctor",
+      "title": "What this machine can do"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Changes one form's design and saves the file: add a control, remove one, or set a property on one. Geometry is in points for a UserForm and twips for an Access design. Setting a property to null clears it, putting the control back at its default. Removing a container takes its children with it, so ask the user first. Adding a control does not write its event procedure; do that with xlide_write_module on the form's code module.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "'add_control', 'remove_control' or 'set_property'.",
+            "title": "Action",
+            "type": "string"
+          },
+          "allow_invalidate_signature": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Invalidate Signature",
+            "type": "boolean"
+          },
+          "allow_protected": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Protected",
+            "type": "boolean"
+          },
+          "container": {
+            "default": "",
+            "description": "For add_control: the Frame or page to put it in.",
+            "title": "Container",
+            "type": "string"
+          },
+          "control_name": {
+            "description": "The control to add, remove or change.",
+            "title": "Control Name",
+            "type": "string"
+          },
+          "control_type": {
+            "default": "",
+            "description": "For add_control: Label, TextBox, CommandButton, CheckBox, OptionButton, ComboBox, ListBox, Frame, MultiPage, Image, SpinButton and the rest.",
+            "title": "Control Type",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "form_name": {
+            "description": "Form to change.",
+            "title": "Form Name",
+            "type": "string"
+          },
+          "height": {
+            "default": 0.0,
+            "description": "0 uses the type's default.",
+            "title": "Height",
+            "type": "number"
+          },
+          "left": {
+            "default": 6.0,
+            "description": "For add_control.",
+            "title": "Left",
+            "type": "number"
+          },
+          "property_name": {
+            "default": "",
+            "description": "For set_property: the property to set.",
+            "title": "Property Name",
+            "type": "string"
+          },
+          "property_value": {
+            "default": null,
+            "description": "For set_property. null clears it to the default.",
+            "title": "Property Value"
+          },
+          "top": {
+            "default": 6.0,
+            "description": "For add_control.",
+            "title": "Top",
+            "type": "number"
+          },
+          "width": {
+            "default": 0.0,
+            "description": "0 uses the type's default.",
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_path",
+          "form_name",
+          "action",
+          "control_name"
+        ],
+        "title": "edit_formArguments",
+        "type": "object"
+      },
+      "name": "xlide_edit_form",
+      "title": "Edit form design"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Writes every VBA module in an Office file to a folder as .bas and .cls files, for source control or review. Previews by default: it reports what it would create, update and leave alone, and writes nothing until apply=true. Only when the user asks for it. The exported files are copies: editing one changes nothing inside the Office file until xlide_import_modules runs.",
+      "input_schema": {
+        "properties": {
+          "apply": {
+            "default": false,
+            "description": "Write the files. False previews the plan.",
+            "title": "Apply",
+            "type": "boolean"
+          },
+          "delete_stale": {
+            "default": false,
+            "description": "Delete .bas and .cls files in the folder that match no module. Ask the user first.",
+            "title": "Delete Stale",
+            "type": "boolean"
+          },
+          "export_folder": {
+            "default": "",
+            "description": "Folder to write into. Empty uses a folder named after the file, beside it.",
+            "title": "Export Folder",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "export_modulesArguments",
+        "type": "object"
+      },
+      "name": "xlide_export_modules",
+      "title": "Export modules to files"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Reads .bas and .cls files from a folder back into an Office file's VBA project and saves it. Previews by default: it reports which modules would change and by how much, and writes nothing until apply=true. A file whose name matches no module creates one. Document modules such as ThisWorkbook are written but never created. After applying, call xlide_analyze.",
+      "input_schema": {
+        "properties": {
+          "allow_invalidate_signature": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Invalidate Signature",
+            "type": "boolean"
+          },
+          "allow_protected": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Protected",
+            "type": "boolean"
+          },
+          "apply": {
+            "default": false,
+            "description": "Write the modules. False previews the plan.",
+            "title": "Apply",
+            "type": "boolean"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "source_folder": {
+            "description": "Folder holding the .bas/.cls files.",
+            "title": "Source Folder",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "source_folder"
+        ],
+        "title": "import_modulesArguments",
+        "type": "object"
+      },
+      "name": "xlide_import_modules",
+      "title": "Import modules from files"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the UserForms in an Office file, or the forms and reports in an Access database, with each one's control count. A form's code is a module of the same name, read with xlide_read_module.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "list_formsArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_forms",
+      "title": "List forms"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the VBA modules in an Office file: name, kind (standard, class, document or userform), line count, and a content_token to pass to a guarded write. xlide_project_info returns this and more in one call; use this one when the file is already known and only the module list is wanted.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "list_modulesArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_modules",
+      "title": "List modules"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the Sub, Function and Property procedures in one module, with each one's kind, scope, line number and signature. Use it to find where to change something without reading a long module in full.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "module_name": {
+            "description": "Module name, matched without case.",
+            "title": "Module Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "module_name"
+        ],
+        "title": "list_proceduresArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_procedures",
+      "title": "List procedures"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Finds the Office files in this server's workspace and returns their absolute paths, host application and whether their VBA can be opened. Call this first when the user has not named a file. Covers Excel (.xlsm, .xlsb, .xlam, .xls, and .xlsx for Power Query and sheets), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb). Files whose extension is recognized but not openable are listed with the reason, so a template or add-in is not silently missing.",
+      "input_schema": {
+        "properties": {
+          "subfolder": {
+            "default": "",
+            "description": "Limit the search to this folder. Empty searches every workspace root.",
+            "title": "Subfolder",
+            "type": "string"
+          }
+        },
+        "title": "list_projectsArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_projects",
+      "title": "List Office files"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the Power Query queries in an Excel workbook: name, group, description, where each loads, and its applied step names. Queries live outside the VBA project, so a plain .xlsx has them too. Call this when asked what a workbook does; a workbook with no macros can still be doing most of its work here.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Excel workbook.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "list_queriesArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_queries",
+      "title": "List Power Query"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the worksheets in an Excel file with their used ranges, whether each is hidden, and the workbook's named ranges. Call this before reading cells, so the range you ask for is one that holds data. Works on .xlsx, .xlsm and .xlam; a .xlsb or .xls keeps its grid in a binary format this server does not read.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "list_sheetsArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_sheets",
+      "title": "List worksheets"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reads a module's text as the running editor holds it, including edits the user has not saved. This is the one read that can differ from xlide_read_module, and the difference is exactly the user's unsaved work. Use it to see what they are actually working on; use xlide_read_module for what is in the file. surface_only=true reads the modern editor's own copy instead, which exists only for a module the user has open in a tab.",
+      "input_schema": {
+        "properties": {
+          "module_name": {
+            "description": "Module name as the editor shows it.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "pid": {
+            "default": 0,
+            "description": "Which session, by process id.",
+            "title": "Pid",
+            "type": "integer"
+          },
+          "project": {
+            "default": "",
+            "description": "Which project, when two documents are open and both hold a module of this name.",
+            "title": "Project",
+            "type": "string"
+          },
+          "surface_only": {
+            "default": false,
+            "description": "Read the modern editor's own copy, which only exists for an open tab. Off reads the module through the editor, which always answers.",
+            "title": "Surface Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "module_name"
+        ],
+        "title": "live_read_moduleArguments",
+        "type": "object"
+      },
+      "name": "xlide_live_read_module",
+      "title": "Read a module from the editor"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Calls one read route on a running xlide_vbide session and returns its JSON. Start with route='agent', which answers with the session's own route table and what each one is for. Allowed routes: agent, agent/examples, agent/routes, analyzer, doctor, engine, model, native, project, projects, state, stats, windows. Routes that drive the editor are deliberately not reachable here.",
+      "input_schema": {
+        "properties": {
+          "pid": {
+            "default": 0,
+            "description": "Which session, by process id.",
+            "title": "Pid",
+            "type": "integer"
+          },
+          "query": {
+            "default": "",
+            "description": "Query string for the route, such as 'name=Module1' or 'type=Range'.",
+            "title": "Query",
+            "type": "string"
+          },
+          "route": {
+            "description": "One of the read routes listed above.",
+            "title": "Route",
+            "type": "string"
+          }
+        },
+        "required": [
+          "route"
+        ],
+        "title": "live_requestArguments",
+        "type": "object"
+      },
+      "name": "xlide_live_request",
+      "title": "Query a live session"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the running xlide_vbide sessions this machine can reach: one per Office process that has opened the Visual Basic Editor with the add-in loaded. Use it to find out whether the user has a live editor before asking about what is on their screen. Windows only, and the add-in's local API has to be switched on by the user. Each session is probed, not just listed, because a discovery file outlives the process that wrote it.",
+      "input_schema": {
+        "properties": {},
+        "title": "live_sessionsArguments",
+        "type": "object"
+      },
+      "name": "xlide_live_sessions",
+      "title": "Live VBE sessions"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "What the running Visual Basic Editor is doing right now: the module and project on screen, whether the project is in break mode, whether there are unsaved edits, the procedure the caret is in, and whether the analyzer engine is answering. Use it when the user asks about what they are looking at, or before suggesting an edit to a module they may have unsaved changes in.",
+      "input_schema": {
+        "properties": {
+          "pid": {
+            "default": 0,
+            "description": "Which session, by process id. 0 uses the only one, or refuses.",
+            "title": "Pid",
+            "type": "integer"
+          }
+        },
+        "title": "live_stateArguments",
+        "type": "object"
+      },
+      "name": "xlide_live_state",
+      "title": "Live editor state"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Everything about one Office file in a single call: its VBA modules with kinds and line counts, its UserForms, its Power Query queries, its worksheets with used ranges and named ranges, and whether the VBA project is password-protected or digitally signed. Call this once per file before working on it. Each module carries a content_token for a guarded write.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "project_infoArguments",
+        "type": "object"
+      },
+      "name": "xlide_project_info",
+      "title": "Project summary"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reads a range of cells from a worksheet and returns a grid of values, formulas, or both. Values are what Excel last calculated and stored, so a formula whose inputs changed outside Excel shows its old result. Ask for formulas when you need to understand what a sheet computes, and values when you need what it currently shows. At most 20,000 cells per call.",
+      "input_schema": {
+        "properties": {
+          "cell_range": {
+            "description": "A1-style range, such as A1:D50, or a single cell.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "include": {
+            "default": "values",
+            "description": "'values', 'formulas' or 'both'.",
+            "title": "Include",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "cell_range"
+        ],
+        "title": "read_cellsArguments",
+        "type": "object"
+      },
+      "name": "xlide_read_cells",
+      "title": "Read cells"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reads one form's design: every control with its name, type, the container it sits in, and the properties the developer set. Properties left at their default are not stored and so are not listed. Use it to understand a form's layout, or to see which control an event procedure belongs to.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "form_name": {
+            "description": "Form name, matched without case.",
+            "title": "Form Name",
+            "type": "string"
+          },
+          "include_properties": {
+            "default": true,
+            "description": "Include each control's set properties. Off gives just the tree.",
+            "title": "Include Properties",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path",
+          "form_name"
+        ],
+        "title": "read_formArguments",
+        "type": "object"
+      },
+      "name": "xlide_read_form",
+      "title": "Read form design"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "The canonical way to read VBA. Returns a module's source as the VBA editor shows it, with the attribute header stripped, plus a content_token. Pass that token back as expected_content_token when you write, and the write is refused if anything changed the module in between. start_line and end_line read a slice of a long module; both are 1-based and inclusive.",
+      "input_schema": {
+        "properties": {
+          "end_line": {
+            "default": 0,
+            "description": "Last line to return. 0 means the end.",
+            "minimum": 0,
+            "title": "End Line",
+            "type": "integer"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "include_header": {
+            "default": false,
+            "description": "Include the Attribute VB_* header. Off by default: the header is managed for you on write, and editing it by hand is how a module loses its binding to a sheet or a form.",
+            "title": "Include Header",
+            "type": "boolean"
+          },
+          "module_name": {
+            "description": "Module name, matched without case.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "start_line": {
+            "default": 0,
+            "description": "First line to return. 0 means the start.",
+            "minimum": 0,
+            "title": "Start Line",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_path",
+          "module_name"
+        ],
+        "title": "read_moduleArguments",
+        "type": "object"
+      },
+      "name": "xlide_read_module",
+      "title": "Read module"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reads one query's M formula, with its description, group, load target and refresh settings. The formula is the whole let ... in expression as the Advanced Editor shows it.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Excel workbook.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "query_name": {
+            "description": "Query name, matched without case.",
+            "title": "Query Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "query_name"
+        ],
+        "title": "read_queryArguments",
+        "type": "object"
+      },
+      "name": "xlide_read_query",
+      "title": "Read Power Query"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Renames a VBA module everywhere its name is stored, and saves the file. Calls to the module's procedures elsewhere in the project are not rewritten; search for the old name first with xlide_search_modules. Document modules such as ThisWorkbook and Sheet1 cannot be renamed, because the host owns them.",
+      "input_schema": {
+        "properties": {
+          "allow_invalidate_signature": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Invalidate Signature",
+            "type": "boolean"
+          },
+          "allow_protected": {
+            "default": false,
+            "description": "Ask the user first.",
+            "title": "Allow Protected",
+            "type": "boolean"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "module_name": {
+            "description": "Module to rename.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "new_name": {
+            "description": "New name. A valid VBA identifier.",
+            "title": "New Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "module_name",
+          "new_name"
+        ],
+        "title": "rename_moduleArguments",
+        "type": "object"
+      },
+      "name": "xlide_rename_module",
+      "title": "Rename module"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "The analyzer's rule catalogue: every diagnostic code with its title, default severity, category, whether it mirrors a VBA compile failure, and the MS-VBAL section it enforces. Use it to explain a code to the user, or to decide whether a finding is a compile error or a judgement call.",
+      "input_schema": {
+        "properties": {
+          "code": {
+            "default": "",
+            "description": "One rule code. Empty lists them all.",
+            "title": "Code",
+            "type": "string"
+          },
+          "search": {
+            "default": "",
+            "description": "Only rules whose code or title contains this.",
+            "title": "Search",
+            "type": "string"
+          }
+        },
+        "title": "rulesArguments",
+        "type": "object"
+      },
+      "name": "xlide_rules",
+      "title": "Analyzer rules"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Runs a procedure that already exists in an Office file, in an application this server starts and owns, under a deadline. Windows only, with the application installed. The document opens read-only unless read_only=false, and closes without saving unless save=true. Returns the procedure's return value, anything it logged, and, on a VBA error, the error number and message. The failing line and call stack come from instrumentation applied to injected source, so a procedure already in the document does not carry them; run the same code through xlide_run_vba when you need them. A run that exceeds its timeout reports 'timeout' and the application is terminated. Ask the user before running a macro that changes data.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Arguments, in order. Scalars only.",
+            "title": "Args"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "procedure": {
+            "description": "Procedure to call, as 'Proc' or 'Module.Proc'.",
+            "title": "Procedure",
+            "type": "string"
+          },
+          "read_only": {
+            "default": true,
+            "description": "Open the document read-only. False lets the macro change it.",
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "save": {
+            "default": false,
+            "description": "Save the document after the run. Needs read_only=false.",
+            "title": "Save",
+            "type": "boolean"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds before the run is terminated.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_path",
+          "procedure"
+        ],
+        "title": "run_macroArguments",
+        "type": "object"
+      },
+      "name": "xlide_run_macro",
+      "title": "Run a macro"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Runs the VBA tests in an Office file: every zero-argument procedure whose name starts with Test. Windows only, with the application installed. Each test is run on its own, so one that hangs is reported as a timeout and the rest still run. Returns pass or fail per test with the assertion message, failing line, call stack and any logged output. Use PyVbaAssert and PyVbaAssertEqual in the tests; the harness supplies them.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "module_name": {
+            "default": "",
+            "description": "Run only this module's tests. Empty runs every module's.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds allowed for each test.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "run_testsArguments",
+        "type": "object"
+      },
+      "name": "xlide_run_tests",
+      "title": "Run VBA tests"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Injects VBA source into a document and calls one procedure from it, under a deadline. Windows only. Use it to check what a piece of code actually does before writing it into a file, or to read something out of a document that no existing macro exposes. With no file_path it runs in a new empty document. Errors come back as data with the failing line and call stack, never as a dialog. Call PyVbaLog \"text\" from the code to return output; Debug.Print and MsgBox do not work under automation.",
+      "input_schema": {
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Arguments, in order. Scalars only.",
+            "title": "Args"
+          },
+          "file_path": {
+            "default": "",
+            "description": "Run against this document instead of a new empty one.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "host": {
+            "default": "excel",
+            "description": "'excel', 'word', 'powerpoint' or 'access'. Ignored with file_path.",
+            "title": "Host",
+            "type": "string"
+          },
+          "procedure": {
+            "default": "",
+            "description": "Procedure to call. Empty calls the first one in the source.",
+            "title": "Procedure",
+            "type": "string"
+          },
+          "read_only": {
+            "default": true,
+            "description": "Open the document read-only.",
+            "title": "Read Only",
+            "type": "boolean"
+          },
+          "source": {
+            "description": "VBA source to inject.",
+            "title": "Source",
+            "type": "string"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds before the run is terminated.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "run_vbaArguments",
+        "type": "object"
+      },
+      "name": "xlide_run_vba",
+      "title": "Run VBA source"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Searches every module's source in an Office file and returns each match with its module, line number and the line itself. Use it to find where a name is declared or used before changing it. Plain text by default; set is_regex for a Python regular expression.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "is_regex": {
+            "default": false,
+            "description": "Treat query as a regular expression.",
+            "title": "Is Regex",
+            "type": "boolean"
+          },
+          "match_case": {
+            "default": false,
+            "description": "Match case. Off by default, because VBA itself ignores case.",
+            "title": "Match Case",
+            "type": "boolean"
+          },
+          "max_results": {
+            "default": 200,
+            "description": "Stop after this many matches.",
+            "maximum": 2000,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "query": {
+            "description": "Text or pattern to find.",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "query"
+        ],
+        "title": "search_modulesArguments",
+        "type": "object"
+      },
+      "name": "xlide_search_modules",
+      "title": "Search VBA"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Checks a file's VBA project for structural problems: records that disagree with each other, a module the directory names but the container does not hold, and the like. This is about the container, not about the code; use xlide_analyze for the code. Worth calling before risky work on an old or repaired file.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "validate_projectArguments",
+        "type": "object"
+      },
+      "name": "xlide_validate_project",
+      "title": "Validate VBA project"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Writes a rectangular block of values and formulas into a worksheet, starting at one cell, and saves the file. Each row of data is a row of the sheet. A string starting with '=' is written as a formula, as you would type it into Excel 365 with no _xlfn prefixes; anything else is a value. A value written over a formula removes that formula, which is what typing into the cell does. Only the rows you touch are rewritten, so charts, styles, pivot caches and the VBA project are untouched. Ask the user before overwriting cells that hold data. Nothing recalculates until Excel next opens the workbook.",
+      "input_schema": {
+        "properties": {
+          "data": {
+            "description": "Rows of cell values. Numbers, strings, booleans, null for empty, and strings starting with '=' for formulas.",
+            "items": {
+              "items": {},
+              "type": "array"
+            },
+            "title": "Data",
+            "type": "array"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "start_cell": {
+            "description": "Top-left cell of the block, such as B2.",
+            "title": "Start Cell",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "start_cell",
+          "data"
+        ],
+        "title": "write_cellsArguments",
+        "type": "object"
+      },
+      "name": "xlide_write_cells",
+      "title": "Write cells"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "The canonical way to change VBA. Writes a module's source into the Office file and saves it. It replaces the module's whole source, so send all of it; send the body only, because the attribute header is managed for you. A module that does not exist is created: standard by default, or a class with kind='class'. Pass expected_content_token from your read and the write is refused if the module changed since. After writing, call xlide_analyze and treat any error as a build failure. Ask the user first when the project is protected or signed.",
+      "input_schema": {
+        "properties": {
+          "allow_invalidate_signature": {
+            "default": false,
+            "description": "Write to a digitally signed project, dropping the signature. Ask the user first.",
+            "title": "Allow Invalidate Signature",
+            "type": "boolean"
+          },
+          "allow_protected": {
+            "default": false,
+            "description": "Write to a password-protected project. Ask the user first.",
+            "title": "Allow Protected",
+            "type": "boolean"
+          },
+          "expected_content_token": {
+            "default": "",
+            "description": "The content_token from your read. Leave empty only when creating a module.",
+            "title": "Expected Content Token",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "kind": {
+            "default": "standard",
+            "description": "Kind for a module being created: 'standard' or 'class'.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "module_name": {
+            "description": "Module to write, or to create.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "source": {
+            "description": "The module's complete VBA source.",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "module_name",
+          "source"
+        ],
+        "title": "write_moduleArguments",
+        "type": "object"
+      },
+      "name": "xlide_write_module",
+      "title": "Write module"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Changes a workbook's Power Query and saves it. action='set' replaces a query's M formula, creating it if it does not exist; 'rename' renames it and rewrites the queries that reference it by name; 'remove' deletes it, which has no undo, so ask the user first. A query already loaded onto a sheet keeps its loaded rows until Excel refreshes it.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "'set', 'rename' or 'remove'.",
+            "title": "Action",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "For set: the query's description.",
+            "title": "Description",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel workbook.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "formula": {
+            "default": "",
+            "description": "For set: the whole M expression, such as 'let Source = 1 in Source'.",
+            "title": "Formula",
+            "type": "string"
+          },
+          "group": {
+            "default": "",
+            "description": "For set on a new query: the folder in the Queries pane.",
+            "title": "Group",
+            "type": "string"
+          },
+          "new_name": {
+            "default": "",
+            "description": "For rename: the new name.",
+            "title": "New Name",
+            "type": "string"
+          },
+          "query_name": {
+            "description": "The query to change.",
+            "title": "Query Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "action",
+          "query_name"
+        ],
+        "title": "write_queryArguments",
+        "type": "object"
+      },
+      "name": "xlide_write_query",
+      "title": "Write Power Query"
+    }
+  ]
+}

@@ -1,0 +1,937 @@
+"""Write the repo's conformance corpus: the behaviour every implementation owes.
+
+The tool contract says what the arguments are. This says what the answers mean,
+which is the part a port gets wrong. Each case is a short script of tool calls and
+a set of assertions over the last one's result, in a vocabulary small enough that
+a runner in any language is an afternoon's work.
+
+The cases are defined here in Python rather than typed as JSON so the VBA source
+in them keeps its CRLF line endings through one escaping layer instead of two.
+The artifact is the JSON; the Python suite runs the JSON, not this file, so a case
+that is wrong fails in Python before any port ever sees it.
+
+    python tools/export_conformance.py           # write ../contract/conformance.json
+    python tools/export_conformance.py --check   # fail if it is out of date
+
+Placeholders inside arguments:
+    ${fixture}          the path of the case's fixture file
+    ${folder:name}      a scratch folder, created on first use
+    ${step[N].path}     a value from an earlier step's result, 0-based
+
+Assertions, all optional, over the last step's result:
+    equals, not_equals, contains, not_contains, starts_with,
+    at_least (a count, or a collection's length),
+    type ("string" | "number" | "boolean" | "array" | "object" | "null")
+A step may instead declare `error_contains`, which requires it to fail with that
+text in the message.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CONFORMANCE_PATH = REPO_ROOT / "contract" / "conformance.json"
+
+CRLF = "\r\n"
+
+HELPERS = CRLF.join(
+    [
+        "Option Explicit",
+        "",
+        "Public Function AddNums(ByVal a As Long, ByVal b As Long) As Long",
+        "    AddNums = a + b",
+        "End Function",
+        "",
+        "Public Sub Greet()",
+        "    Dim who As String",
+        '    who = "world"',
+        '    Debug.Print "hello " & who',
+        "End Sub",
+        "",
+    ]
+)
+
+BROKEN = CRLF.join(
+    [
+        "Option Explicit",
+        "",
+        "Public Sub Broken()",
+        "    Dim n As Long",
+        '    n = "not a number"',
+        "End Sub",
+        "",
+    ]
+)
+
+FIXTURES: dict[str, Any] = {
+    "workbook": {
+        "kind": "excel-macro-workbook",
+        "file_name": "Budget.xlsm",
+        "why": (
+            "A macro-enabled workbook created from the application's own template, with one "
+            "standard module added. The module analyzes clean on purpose: a fixture that "
+            "analyzes dirty makes every analysis case argue with the fixture."
+        ),
+        "modules": [{"name": "Helpers", "kind": "standard", "source": HELPERS}],
+    },
+    "word_document": {
+        "kind": "word-document",
+        "file_name": "Report.docm",
+        "why": (
+            "A host that is not Excel, so the refusals that turn on which application a "
+            "file belongs to have a real subject rather than a hypothetical one."
+        ),
+        "modules": [],
+    },
+    "plain_workbook": {
+        "kind": "excel-workbook",
+        "file_name": "Data.xlsx",
+        "why": (
+            "A workbook with no VBA project at all, carrying one Power Query. It pins the "
+            "rule that Power Query and worksheet cells are reachable where macros are not."
+        ),
+        "power_query": [{"name": "Numbers", "formula": "let Source = {1..10} in Source"}],
+    },
+}
+
+
+def case(
+    case_id: str,
+    why: str,
+    fixture: str | None,
+    steps: list[dict[str, Any]],
+    expect: list[dict[str, Any]] | None = None,
+    requires: str = "files",
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "id": case_id,
+        "why": why,
+        "requires": requires,
+        "steps": steps,
+    }
+    if fixture:
+        entry["fixture"] = fixture
+    if expect:
+        entry["expect"] = expect
+    return entry
+
+
+def step(tool: str, arguments: dict[str, Any], error_contains: str = "") -> dict[str, Any]:
+    entry: dict[str, Any] = {"tool": tool, "arguments": arguments}
+    if error_contains:
+        entry["error_contains"] = error_contains
+    return entry
+
+
+def cases() -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+
+    # ---------------------------------------------------------------- reading
+    out.append(
+        case(
+            "project-info.reports-the-write-guards",
+            "Before writing, an agent has to know whether the project is protected or signed. "
+            "Both facts are present and false on an ordinary file, never merely absent.",
+            "workbook",
+            [step("xlide_project_info", {"file_path": "${fixture}"})],
+            [
+                {"path": "host", "equals": "excel"},
+                {"path": "vba_readable", "equals": True},
+                {"path": "password_protected", "equals": False},
+                {"path": "digitally_signed", "equals": False},
+                {"path": "modules", "at_least": 1},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "read-module.strips-the-attribute-header",
+            "A read returns what the VBA editor shows. The Attribute VB_* header is managed "
+            "for the caller, and an agent that edits it by hand breaks a module's binding.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                )
+            ],
+            [
+                {"path": "module", "equals": "Helpers"},
+                {"path": "kind", "equals": "standard"},
+                {"path": "source", "not_contains": "Attribute VB_Name"},
+                {"path": "source", "contains": "Public Function AddNums"},
+                {"path": "content_token", "starts_with": "xlide1:"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "read-module.include-header-shows-it",
+            "The header is reachable when it is genuinely wanted, so the default hiding it "
+            "costs nothing.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "include_header": True,
+                    },
+                )
+            ],
+            [{"path": "source", "contains": "Attribute VB_Name"}],
+        )
+    )
+    out.append(
+        case(
+            "module-names.match-without-case",
+            "VBA compares names without case, so every tool that takes a module name does too.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "hELPers"},
+                )
+            ],
+            [{"path": "module", "equals": "Helpers"}],
+        )
+    )
+    out.append(
+        case(
+            "read-module.missing-names-what-exists",
+            "A refusal that lists the modules that do exist saves the round trip an agent "
+            "would otherwise spend discovering them.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Nope"},
+                    error_contains="Helpers",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "list-procedures.joins-a-continued-signature",
+            "A declaration split over lines with trailing underscores is one procedure. "
+            "Reporting it as several is worse than reporting none.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Wrapped",
+                        "source": CRLF.join(
+                            [
+                                "Option Explicit",
+                                "",
+                                "Public Function Pair(ByVal a As Long, _",
+                                "                     ByVal b As Long) As Long",
+                                "    Pair = a + b",
+                                "End Function",
+                                "",
+                            ]
+                        ),
+                    },
+                ),
+                step(
+                    "xlide_list_procedures",
+                    {"file_path": "${fixture}", "module_name": "Wrapped"},
+                ),
+            ],
+            [
+                {"path": "procedures", "at_least": 1},
+                {"path": "procedures[0].name", "equals": "Pair"},
+                {"path": "procedures[0].kind", "equals": "Function"},
+            ],
+        )
+    )
+
+    # ---------------------------------------------------------------- writing
+    out.append(
+        case(
+            "write-module.round-trips-and-reissues-the-token",
+            "A write answers with the token of what it wrote, so the next write can be "
+            "guarded without a second read.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": HELPERS.replace("a + b", "a + b + 1"),
+                        "expected_content_token": "${step[0].content_token}",
+                    },
+                ),
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+            ],
+            [
+                {"path": "source", "contains": "a + b + 1"},
+                {"path": "content_token", "equals": "${step[1].content_token}"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "write-module.refuses-a-stale-token",
+            "The guard that stops one writer discarding another's change. A token from a "
+            "read that something else has since overtaken must refuse, and the refusal has "
+            "to hand back the current token so the caller can recover in one step.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": HELPERS + "' someone else got here first" + CRLF,
+                        "expected_content_token": "${step[0].content_token}",
+                    },
+                ),
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": HELPERS + "' my edit" + CRLF,
+                        "expected_content_token": "${step[0].content_token}",
+                    },
+                    error_contains="xlide1:",
+                ),
+            ],
+        )
+    )
+    out.append(
+        case(
+            "write-module.creates-what-is-missing",
+            "Creating a module is a write with no token, not a separate tool.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Fresh",
+                        "source": "Option Explicit" + CRLF,
+                    },
+                )
+            ],
+            [
+                {"path": "created", "equals": True},
+                {"path": "kind", "equals": "standard"},
+                {"path": "saved", "equals": True},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "write-module.creates-a-class-on-request",
+            "Class modules are created through the same tool, by kind.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Widget",
+                        "source": "Option Explicit" + CRLF,
+                        "kind": "class",
+                    },
+                )
+            ],
+            [{"path": "created", "equals": True}, {"path": "kind", "equals": "class"}],
+        )
+    )
+    out.append(
+        case(
+            "write-module.refuses-an-invalid-name",
+            "A name VBA cannot carry is refused before the file is touched.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "1Bad",
+                        "source": "Option Explicit" + CRLF,
+                    },
+                    error_contains="not a valid module name",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "write-module.refuses-a-reserved-word",
+            "A module cannot be called Sub, whatever the caller intended.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Sub",
+                        "source": "Option Explicit" + CRLF,
+                    },
+                    error_contains="reserved word",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "rename-module.refuses-a-document-module",
+            "The host owns ThisWorkbook and recreates it by name. A renamed one leaves the "
+            "project no longer matching its file.",
+            "workbook",
+            [
+                step(
+                    "xlide_rename_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "ThisWorkbook",
+                        "new_name": "Renamed",
+                    },
+                    error_contains="document module",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "delete-module.refuses-a-document-module",
+            "Deleting one is the same category error as renaming it.",
+            "workbook",
+            [
+                step(
+                    "xlide_delete_module",
+                    {"file_path": "${fixture}", "module_name": "ThisWorkbook"},
+                    error_contains="document module",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "rename-module.refuses-a-name-that-collides-without-case",
+            "VBA compares without case, so Helpers and HELPERS are one name.",
+            "workbook",
+            [
+                step(
+                    "xlide_rename_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "new_name": "HELPERS",
+                    },
+                    error_contains="already exists",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "delete-module.removes-it",
+            "A delete is reported by name, with what it cost.",
+            "workbook",
+            [
+                step(
+                    "xlide_delete_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+                step("xlide_list_modules", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "modules", "not_contains": "Helpers"}],
+        )
+    )
+
+    # --------------------------------------------------------------- analysis
+    out.append(
+        case(
+            "analyze.reports-a-clean-file-as-clean",
+            "The build gate is only usable if a clean file comes back clean.",
+            "workbook",
+            [step("xlide_analyze", {"file_path": "${fixture}"})],
+            [
+                {"path": "counts.error", "equals": 0},
+                {"path": "verdict", "equals": "clean"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "analyze.positions-match-what-a-read-returns",
+            "The most consequential rule in the whole surface. Analysis measures a source "
+            "that carries the attribute header; a read strips it. An implementation that "
+            "does not shift the position reports every diagnostic one line late, and an "
+            "agent acting on it edits the wrong line.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Broken",
+                        "source": BROKEN,
+                    },
+                ),
+                step(
+                    "xlide_analyze",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Broken",
+                        "min_severity": "error",
+                    },
+                ),
+            ],
+            [
+                {"path": "problems", "at_least": 1},
+                {"path": "problems[0].severity", "equals": "error"},
+                {"path": "problems[0].line", "equals": 5},
+                {"path": "problems[0].text", "contains": "not a number"},
+                {"path": "verdict", "equals": "errors found"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "analyze.counts-stay-project-wide-when-a-module-is-named",
+            "Narrowing the report must not hide from the agent that the file is not clean.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Broken",
+                        "source": BROKEN,
+                    },
+                ),
+                step(
+                    "xlide_analyze",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+            ],
+            [
+                {"path": "counts.error", "at_least": 1},
+                {"path": "verdict", "equals": "errors found"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "analyze-source.needs-no-file",
+            "Checking generated code before writing it costs nothing and catches the compile "
+            "errors that would otherwise surface in front of the user.",
+            None,
+            [step("xlide_analyze_source", {"source": BROKEN, "host": "excel"})],
+            [
+                {"path": "verdict", "equals": "errors found"},
+                {"path": "counts.error", "at_least": 1},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "analyze-source.against-a-project-resolves-its-calls",
+            "A draft module that calls into the project must resolve against it, or every "
+            "check of new code drowns in names it cannot see.",
+            "workbook",
+            [
+                step(
+                    "xlide_analyze_source",
+                    {
+                        "source": CRLF.join(
+                            [
+                                "Option Explicit",
+                                "",
+                                "Public Sub Use()",
+                                "    Debug.Print AddNums(1, 2)",
+                                "End Sub",
+                                "",
+                            ]
+                        ),
+                        "module_name": "Draft",
+                        "file_path": "${fixture}",
+                    },
+                )
+            ],
+            [
+                {"path": "counts.error", "equals": 0},
+                {"path": "host", "equals": "excel"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "analyze.refuses-an-unknown-host",
+            "Only the four hosts have object models here, and a typo must not silently fall "
+            "back to analyzing against nothing.",
+            None,
+            [
+                step(
+                    "xlide_analyze_source",
+                    {"source": "Sub A()" + CRLF + "End Sub" + CRLF, "host": "outlook"},
+                    error_contains="not a host",
+                )
+            ],
+        )
+    )
+
+    # ------------------------------------------------------------- discovery
+    out.append(
+        case(
+            "list-projects.explains-what-it-cannot-open",
+            "A file left silently out of a listing sends the user looking for it. A .xlsx "
+            "is listed, marked unreadable, and told why.",
+            "plain_workbook",
+            [step("xlide_list_projects", {})],
+            [
+                {"path": "files", "at_least": 1},
+                {"path": "files", "contains": "no VBA project by design"},
+                {"path": "files", "contains": "\"readable\": false"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "project-info.reaches-power-query-in-a-file-with-no-macros",
+            "A workbook with no VBA can still be doing all of its work in Power Query.",
+            "plain_workbook",
+            [step("xlide_project_info", {"file_path": "${fixture}"})],
+            [
+                {"path": "vba_readable", "equals": False},
+                {"path": "power_query.count", "equals": 1},
+                {"path": "sheets", "at_least": 1},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "create-project.never-overwrites",
+            "Creating over an existing file would destroy work with no undo.",
+            "workbook",
+            [
+                step(
+                    "xlide_create_project",
+                    {"file_path": "${fixture}"},
+                    error_contains="already exists",
+                )
+            ],
+        )
+    )
+
+    # ------------------------------------------------------------------ cells
+    out.append(
+        case(
+            "cells.round-trip-values-and-formulas",
+            "A formula is stored as typed and read back as typed, whatever prefix the file "
+            "format requires in between.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [[1], [2], ["=SUM(A1:A2)"], ["=XLOOKUP(1,A1:A2,A1:A2)"]],
+                    },
+                ),
+                step(
+                    "xlide_read_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "cell_range": "A1:A4",
+                        "include": "both",
+                    },
+                ),
+            ],
+            [
+                {"path": "values[0][0]", "equals": 1},
+                {"path": "formulas[2][0]", "equals": "=SUM(A1:A2)"},
+                {"path": "formulas[3][0]", "equals": "=XLOOKUP(1,A1:A2,A1:A2)"},
+                {"path": "values[2][0]", "type": "null"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "cells.a-write-never-claims-a-result",
+            "Nothing here calculates. A result Excel has not produced must not be reported "
+            "as though it had.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [["=1+1"]],
+                    },
+                )
+            ],
+            [
+                {"path": "recalculated", "equals": False},
+                {"path": "saved", "equals": True},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "cells.report-what-was-overwritten",
+            "Overwriting data is the user's decision, and they can only make it if the "
+            "agent is told what it displaced.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [["first"], ["=1+1"]],
+                    },
+                ),
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [["second"], ["third"]],
+                    },
+                ),
+            ],
+            [
+                {"path": "cells_overwritten", "equals": 2},
+                {"path": "formulas_replaced", "equals": 1},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "cells.unknown-sheet-names-the-ones-that-exist",
+            "The same courtesy a missing module gets.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_read_cells",
+                    {"file_path": "${fixture}", "sheet": "Nope", "cell_range": "A1"},
+                    error_contains="Sheet1",
+                )
+            ],
+        )
+    )
+
+    # ------------------------------------------------------------ power query
+    out.append(
+        case(
+            "power-query.read-and-write",
+            "M is code, edited the way VBA is.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_query",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "set",
+                        "query_name": "Numbers",
+                        "formula": "let Source = {1..20} in Source",
+                    },
+                ),
+                step(
+                    "xlide_read_query",
+                    {"file_path": "${fixture}", "query_name": "numbers"},
+                ),
+            ],
+            [
+                {"path": "query", "equals": "Numbers"},
+                {"path": "formula", "contains": "{1..20}"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "power-query.a-query-loading-nowhere-has-no-refresh-settings",
+            "Refresh settings belong to a connection, and a query that loads nowhere has "
+            "none. An implementation that treats this as an error fails on the common case.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_read_query",
+                    {"file_path": "${fixture}", "query_name": "Numbers"},
+                )
+            ],
+            [{"path": "refresh_note", "contains": "loads nowhere"}],
+        )
+    )
+    out.append(
+        case(
+            "power-query.refused-on-another-host",
+            "Power Query is an Excel feature. A Word file asking for it gets a refusal that "
+            "names the host, not an empty list that reads as 'this document has no queries'.",
+            "word_document",
+            [
+                step(
+                    "xlide_list_queries",
+                    {"file_path": "${fixture}"},
+                    error_contains="Excel packages",
+                )
+            ],
+        )
+    )
+
+    # -------------------------------------------------------------- disk sync
+    out.append(
+        case(
+            "export.previews-before-it-writes",
+            "An export that silently overwrote a folder of reviewed files would lose the "
+            "diff before anyone noticed.",
+            "workbook",
+            [
+                step(
+                    "xlide_export_modules",
+                    {"file_path": "${fixture}", "export_folder": "${folder:vba}"},
+                )
+            ],
+            [{"path": "applied", "equals": False}, {"path": "plan", "at_least": 1}],
+        )
+    )
+    out.append(
+        case(
+            "import.previews-before-it-writes",
+            "The rule agents get wrong most often stated as a guard: an import reports what "
+            "it would change and writes nothing, so an edited export is still only a copy "
+            "until someone applies it deliberately.",
+            "workbook",
+            [
+                step(
+                    "xlide_export_modules",
+                    {
+                        "file_path": "${fixture}",
+                        "export_folder": "${folder:vba}",
+                        "apply": True,
+                    },
+                ),
+                step(
+                    "xlide_import_modules",
+                    {"file_path": "${fixture}", "source_folder": "${folder:vba}"},
+                ),
+            ],
+            [
+                {"path": "applied", "equals": False},
+                {"path": "plan", "at_least": 1},
+            ],
+        )
+    )
+
+    # ----------------------------------------------------------- the boundary
+    out.append(
+        case(
+            "workspace.refuses-a-path-outside-the-roots",
+            "A path argument is untrusted input. Reach is bounded by configuration, not by "
+            "what the caller asks for.",
+            None,
+            [
+                step(
+                    "xlide_list_modules",
+                    {"file_path": "${outside}/elsewhere.xlsm"},
+                    error_contains="outside this server's workspace",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "workspace.refuses-traversal-out-of-a-root",
+            "The same boundary, reached the other way.",
+            "workbook",
+            [
+                step(
+                    "xlide_list_modules",
+                    {"file_path": "${fixture}/../../elsewhere.xlsm"},
+                    error_contains="outside this server's workspace",
+                )
+            ],
+        )
+    )
+
+    return out
+
+
+def build() -> dict[str, Any]:
+    from xlide_mcp import __version__
+
+    return {
+        "conformance_version": __version__,
+        "reference_implementation": "python",
+        "note": (
+            "Behaviour every implementation in this repository owes. The Python suite runs "
+            "this file, so a case that is wrong fails there before a port ever sees it."
+        ),
+        "requires": {
+            "files": "Reads and writes the Office file. No Office installation, any platform.",
+            "office": "Runs VBA in a desktop application. Windows, with the application.",
+            "live": "Talks to a running xlide_vbide session inside the Visual Basic Editor.",
+        },
+        "fixtures": FIXTURES,
+        "case_count": len(cases()),
+        "cases": cases(),
+    }
+
+
+def render(corpus: dict[str, Any]) -> str:
+    return json.dumps(corpus, indent=2) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Export the conformance corpus.")
+    parser.add_argument("--check", action="store_true", help="Fail if the file is out of date.")
+    parser.add_argument("--out", type=Path, default=CONFORMANCE_PATH)
+    args = parser.parse_args(argv)
+
+    rendered = render(build())
+    if args.check:
+        if not args.out.is_file() or args.out.read_text(encoding="utf-8") != rendered:
+            print(
+                f"{args.out} is out of date. Regenerate: python tools/export_conformance.py",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"{args.out.name} is current.")
+        return 0
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    # Written LF on every platform. The repository normalizes to LF, so an
+    # artifact regenerated on Windows with native line endings would read as
+    # modified the moment it was written.
+    args.out.write_text(rendered, encoding="utf-8", newline="\n")
+    print(f"Wrote {args.out} ({len(cases())} cases).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

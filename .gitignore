@@ -1,0 +1,46 @@
+# Agent working files
+CLAUDE.md
+
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+
+# ------------------------------------------------- other implementations
+# One directory per language beside python/. These cover the usual build
+# output so a new implementation does not have to edit this file first.
+node_modules/
+*.tsbuildinfo
+out/
+bin/
+obj/
+target/
+
+# ------------------------------------------------------------------ local
+.env
+.env.local
+.env.*.local
+*.log
+
+# Office writes a lock file beside an open document, and the test fixtures
+# are built on the fly rather than committed.
+~$*
+tests/fixtures/generated/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
