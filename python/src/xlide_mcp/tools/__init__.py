@@ -1,6 +1,7 @@
 """Tool groups, one module per layer of reach.
 
-* discovery, modules, analysis, forms, powerquery, sheets, sync - the file itself.
+* discovery, modules, analysis, forms, powerquery, sheets, sync, vcs - the
+  file itself.
   No Office installation, any platform.
 * execution - macros, tests and compile checks in a desktop application this
   server owns. Windows only.
@@ -19,4 +20,5 @@ __all__ = [
     "powerquery",
     "sheets",
     "sync",
+    "vcs",
 ]

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,9 @@ def load_corpus() -> dict[str, Any]:
 
 
 CORPUS = load_corpus() if CORPUS_PATH.is_file() else {"cases": []}
-CASES = [c for c in CORPUS.get("cases", []) if c.get("requires", "files") == "files"]
+# git cases need git on the PATH; everything else in the corpus needs nothing.
+_RUNNABLE = {"files"} | ({"git"} if shutil.which("git") else set())
+CASES = [c for c in CORPUS.get("cases", []) if c.get("requires", "files") in _RUNNABLE]
 
 
 def test_the_corpus_is_present_and_whole() -> None:

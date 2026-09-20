@@ -121,3 +121,30 @@ def word_document(workspace: Path) -> Path:
     with pyopenvba.WordFile.create_new(path) as document:
         document.save()
     return path
+
+
+@pytest.fixture
+def committed_workbook(workspace: Path, workbook: Path) -> Path:
+    """The fixture workbook, committed to a git repository at the workspace root.
+
+    The file is marked binary in .gitattributes: a normalizing filter would
+    rewrite bytes inside the container, so a fixture that skips that step tests a
+    corrupted workbook rather than the tool.
+    """
+    import subprocess
+
+    def git(*arguments: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(workspace), *arguments],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+    git("init", "-b", "main")
+    git("config", "user.email", "tests@example.invalid")
+    git("config", "user.name", "Tests")
+    (workspace / ".gitattributes").write_text("*.xlsm binary\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-m", "the workbook as it was")
+    return workbook

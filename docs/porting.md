@@ -35,7 +35,7 @@ discovery lands.
 3. **The workspace boundary.** Path arguments resolve, symlinks and all, before
    the containment check. Two conformance cases cover it and they are the two
    worth failing the build over.
-4. **The same refusals.** Thirteen cases assert a failure message. A port that
+4. **The same refusals.** Fourteen cases assert a failure message. A port that
    succeeds where the contract refuses has a different product, not a lenient one.
 
 A port does not owe the internal structure. How it opens a container, whether it
@@ -51,7 +51,7 @@ in, which is usually worse than the thing being unavailable.
 
 | Layer | Tools | Needs |
 |---|---|---|
-| Files | discovery, modules, analysis, forms, Power Query, sheets, sync | Nothing. Any platform. |
+| Files | discovery, modules, analysis, forms, Power Query, sheets, sync, git changes | Nothing. Any platform, git on the PATH for `xlide_git_changes`. |
 | Execution | `xlide_run_macro`, `xlide_run_vba`, `xlide_run_tests`, `xlide_compile_check` | Windows, desktop Office. |
 | Live | `xlide_live_*` | A running `xlide_vbide` session. |
 

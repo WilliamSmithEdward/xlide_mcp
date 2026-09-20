@@ -54,6 +54,7 @@ src/xlide_mcp/
     powerquery.py   the M code beside the VBA
     sheets.py       cells and formulas
     sync.py         export and import .bas/.cls, previewed
+    vcs.py          what changed inside the file since a git revision
     execution.py    macros, tests and compile checks in real Office
     live.py         a running xlide_vbide session in the VBE
 tools/
@@ -68,7 +69,7 @@ live layer needs the VBE add-in running.
 ## Test
 
 ```bash
-python -m pytest                 # 124 tests, no Office needed
+python -m pytest                 # 138 tests, no Office needed
 python -m pytest -m live         # 9 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

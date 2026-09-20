@@ -5,6 +5,7 @@
   "requires": {
     "files": "Reads and writes the Office file. No Office installation, any platform.",
     "office": "Runs VBA in a desktop application. Windows, with the application.",
+    "git": "Reads and writes the Office file, and needs git on the PATH.",
     "live": "Talks to a running xlide_vbide session inside the Visual Basic Editor."
   },
   "fixtures": {
@@ -26,6 +27,22 @@
       "why": "A host that is not Excel, so the refusals that turn on which application a file belongs to have a real subject rather than a hypothetical one.",
       "modules": []
     },
+    "committed_workbook": {
+      "kind": "excel-macro-workbook-in-a-git-repository",
+      "file_name": "Budget.xlsm",
+      "why": "The same workbook, committed to a git repository at the workspace root with the file marked binary. A normalizing filter would corrupt the container, so a runner that skips that step tests a broken fixture rather than the tool.",
+      "modules": [
+        {
+          "name": "Helpers",
+          "kind": "standard",
+          "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n"
+        }
+      ],
+      "git": {
+        "commit_message": "the workbook as it was",
+        "attributes": "*.xlsm binary"
+      }
+    },
     "plain_workbook": {
       "kind": "excel-workbook",
       "file_name": "Data.xlsx",
@@ -38,7 +55,7 @@
       ]
     }
   },
-  "case_count": 36,
+  "case_count": 39,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -971,6 +988,81 @@
           "at_least": 1
         }
       ]
+    },
+    {
+      "id": "git-changes.reports-a-modified-module-with-its-diff",
+      "why": "git diff cannot answer this: an Office file is one binary blob, so a commit that changed a line and one that replaced the project look identical. Reading the blob at the revision and diffing the VBA inside it is the only way a workbook can be reviewed at all.",
+      "requires": "git",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b + 1\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n"
+          }
+        },
+        {
+          "tool": "xlide_git_changes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "committed_workbook",
+      "expect": [
+        {
+          "path": "modules_changed",
+          "equals": 1
+        },
+        {
+          "path": "modules",
+          "contains": "\"status\": \"modified\""
+        },
+        {
+          "path": "modules",
+          "contains": "AddNums = a + b + 1"
+        }
+      ]
+    },
+    {
+      "id": "git-changes.an-unchanged-file-reports-nothing",
+      "why": "The common case has to be quiet, or nobody calls it before committing.",
+      "requires": "git",
+      "steps": [
+        {
+          "tool": "xlide_git_changes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "committed_workbook",
+      "expect": [
+        {
+          "path": "modules_changed",
+          "equals": 0
+        },
+        {
+          "path": "verdict",
+          "equals": "no VBA changes"
+        }
+      ]
+    },
+    {
+      "id": "git-changes.outside-a-repository-says-so",
+      "why": "There is no revision to compare against, and the refusal says what to call instead rather than leaving the agent to guess the tool is broken.",
+      "requires": "git",
+      "steps": [
+        {
+          "tool": "xlide_git_changes",
+          "arguments": {
+            "file_path": "${fixture}"
+          },
+          "error_contains": "not inside a git repository"
+        }
+      ],
+      "fixture": "workbook"
     },
     {
       "id": "workspace.refuses-a-path-outside-the-roots",

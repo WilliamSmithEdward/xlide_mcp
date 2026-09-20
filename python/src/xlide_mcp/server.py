@@ -19,7 +19,18 @@ from mcp.server.mcpserver import MCPServer
 from ._version import __version__
 from .config import Settings
 from .instructions import SERVER_INSTRUCTIONS
-from .tools import analysis, discovery, execution, forms, live, modules, powerquery, sheets, sync
+from .tools import (
+    analysis,
+    discovery,
+    execution,
+    forms,
+    live,
+    modules,
+    powerquery,
+    sheets,
+    sync,
+    vcs,
+)
 
 _REGISTRARS = (
     discovery.register,
@@ -29,6 +40,7 @@ _REGISTRARS = (
     powerquery.register,
     sheets.register,
     sync.register,
+    vcs.register,
     execution.register,
     live.register,
 )

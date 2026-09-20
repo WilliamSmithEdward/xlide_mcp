@@ -88,6 +88,17 @@ FIXTURES: dict[str, Any] = {
         ),
         "modules": [],
     },
+    "committed_workbook": {
+        "kind": "excel-macro-workbook-in-a-git-repository",
+        "file_name": "Budget.xlsm",
+        "why": (
+            "The same workbook, committed to a git repository at the workspace root with "
+            "the file marked binary. A normalizing filter would corrupt the container, so "
+            "a runner that skips that step tests a broken fixture rather than the tool."
+        ),
+        "modules": [{"name": "Helpers", "kind": "standard", "source": HELPERS}],
+        "git": {"commit_message": "the workbook as it was", "attributes": "*.xlsm binary"},
+    },
     "plain_workbook": {
         "kind": "excel-workbook",
         "file_name": "Data.xlsx",
@@ -848,6 +859,64 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    # ------------------------------------------------------------ git changes
+    out.append(
+        case(
+            "git-changes.reports-a-modified-module-with-its-diff",
+            "git diff cannot answer this: an Office file is one binary blob, so a commit "
+            "that changed a line and one that replaced the project look identical. Reading "
+            "the blob at the revision and diffing the VBA inside it is the only way a "
+            "workbook can be reviewed at all.",
+            "committed_workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": HELPERS.replace("a + b", "a + b + 1"),
+                    },
+                ),
+                step("xlide_git_changes", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "modules_changed", "equals": 1},
+                {"path": "modules", "contains": '"status": "modified"'},
+                {"path": "modules", "contains": "AddNums = a + b + 1"},
+            ],
+            requires="git",
+        )
+    )
+    out.append(
+        case(
+            "git-changes.an-unchanged-file-reports-nothing",
+            "The common case has to be quiet, or nobody calls it before committing.",
+            "committed_workbook",
+            [step("xlide_git_changes", {"file_path": "${fixture}"})],
+            [
+                {"path": "modules_changed", "equals": 0},
+                {"path": "verdict", "equals": "no VBA changes"},
+            ],
+            requires="git",
+        )
+    )
+    out.append(
+        case(
+            "git-changes.outside-a-repository-says-so",
+            "There is no revision to compare against, and the refusal says what to call "
+            "instead rather than leaving the agent to guess the tool is broken.",
+            "workbook",
+            [
+                step(
+                    "xlide_git_changes",
+                    {"file_path": "${fixture}"},
+                    error_contains="not inside a git repository",
+                )
+            ],
+            requires="git",
+        )
+    )
+
     # ----------------------------------------------------------- the boundary
     out.append(
         case(
@@ -895,6 +964,7 @@ def build() -> dict[str, Any]:
         "requires": {
             "files": "Reads and writes the Office file. No Office installation, any platform.",
             "office": "Runs VBA in a desktop application. Windows, with the application.",
+            "git": "Reads and writes the Office file, and needs git on the PATH.",
             "live": "Talks to a running xlide_vbide session inside the Visual Basic Editor.",
         },
         "fixtures": FIXTURES,
