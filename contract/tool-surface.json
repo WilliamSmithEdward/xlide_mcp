@@ -1,6 +1,6 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:3cc4cd67365d7fa8f7dc14910b85fc91598dc7e5b57a45816a50b02ae4953a12",
+  "digest": "sha256:fe87f914e2ed6fd7fbd9f386d54fc7abd76ac2f9dd2da429902fbf5974834113",
   "generated_with": {
     "upstream": {
       "pyOpenVBA": "5.2.4",
@@ -1569,13 +1569,35 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Changes a workbook's Power Query and saves it. action='set' replaces a query's M formula, creating it if it does not exist; 'rename' renames it and rewrites the queries that reference it by name; 'remove' deletes it, which has no undo, so ask the user first. A query already loaded onto a sheet keeps its loaded rows until Excel refreshes it.",
+      "description": "Changes a workbook's Power Query and saves it. action='set' replaces a query's M formula, creating it if it does not exist; 'rename' renames it and rewrites the queries that reference it by name; 'remove' deletes it and everything that loaded it onto a sheet, which has no undo, so ask the user first. 'load' puts a query's result on a worksheet and 'unload' takes it back off. Loading needs the column names, because writing the connection means naming the columns and knowing them means running the query, which nothing here does; Excel settles them against the real result on the first refresh. A query already loaded keeps its rows until Excel refreshes it.",
       "input_schema": {
         "properties": {
           "action": {
-            "description": "'set', 'rename' or 'remove'.",
+            "description": "'set', 'rename', 'remove', 'load' or 'unload'.",
             "title": "Action",
             "type": "string"
+          },
+          "cell": {
+            "default": "A1",
+            "description": "For load: the table's top-left cell.",
+            "title": "Cell",
+            "type": "string"
+          },
+          "columns": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "For load: the column names the query returns, in order. Required, because the connection has to name them and nothing here runs the query to find out. Excel corrects them on the first refresh.",
+            "title": "Columns"
           },
           "description": {
             "default": "",
@@ -1609,6 +1631,12 @@
           "query_name": {
             "description": "The query to change.",
             "title": "Query Name",
+            "type": "string"
+          },
+          "sheet": {
+            "default": "",
+            "description": "For load: the worksheet. Empty uses the first.",
+            "title": "Sheet",
             "type": "string"
           }
         },

@@ -1218,6 +1218,56 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    out.append(
+        case(
+            "power-query.a-query-loads-onto-a-sheet-and-comes-off-again",
+            "Loading needs the column names, because the connection has to name them and "
+            "knowing them means running the query, which nothing here does. Excel settles "
+            "them against the real result on the first refresh.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_query",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "load",
+                        "query_name": "Numbers",
+                        "columns": ["Value"],
+                        "cell": "A1",
+                    },
+                ),
+                step(
+                    "xlide_read_query",
+                    {"file_path": "${fixture}", "query_name": "Numbers"},
+                ),
+            ],
+            [
+                {"path": "load_target", "equals": "table"},
+                # A loaded query has a connection, and therefore refresh settings.
+                {"path": "refresh", "type": "object"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "power-query.load-without-column-names-is-refused",
+            "A connection with no columns is one Excel cannot refresh. Guessing them here "
+            "would be inventing data, so the caller is asked for what it expects.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_query",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "load",
+                        "query_name": "Numbers",
+                    },
+                    error_contains="columns is required",
+                )
+            ],
+        )
+    )
+
     # ------------------------------------------------------- the other halves
     out.append(
         case(

@@ -126,14 +126,20 @@ def register(server: MCPServer, settings: Settings) -> None:
         description=(
             "Changes a workbook's Power Query and saves it. action='set' replaces a query's M "
             "formula, creating it if it does not exist; 'rename' renames it and rewrites the "
-            "queries that reference it by name; 'remove' deletes it, which has no undo, so ask "
-            "the user first. A query already loaded onto a sheet keeps its loaded rows until "
+            "queries that reference it by name; 'remove' deletes it and everything that loaded "
+            "it onto a sheet, which has no undo, so ask the user first. 'load' puts a query's "
+            "result on a worksheet and 'unload' takes it back off. Loading needs the column "
+            "names, because writing the connection means naming the columns and knowing them "
+            "means running the query, which nothing here does; Excel settles them against the "
+            "real result on the first refresh. A query already loaded keeps its rows until "
             "Excel refreshes it."
         ),
     )
     def write_query(
         file_path: Annotated[str, Field(description="Absolute path to the Excel workbook.")],
-        action: Annotated[str, Field(description="'set', 'rename' or 'remove'.")],
+        action: Annotated[
+            str, Field(description="'set', 'rename', 'remove', 'load' or 'unload'.")
+        ],
         query_name: Annotated[str, Field(description="The query to change.")],
         formula: Annotated[
             str,
@@ -155,12 +161,32 @@ def register(server: MCPServer, settings: Settings) -> None:
                 description="For set on a new query: the folder in the Queries pane.",
             ),
         ] = "",
+        columns: Annotated[
+            list[str] | None,
+            Field(
+                default=None,
+                description=(
+                    "For load: the column names the query returns, in order. Required, "
+                    "because the connection has to name them and nothing here runs the query "
+                    "to find out. Excel corrects them on the first refresh."
+                ),
+            ),
+        ] = None,
+        sheet: Annotated[
+            str,
+            Field(default="", description="For load: the worksheet. Empty uses the first."),
+        ] = "",
+        cell: Annotated[
+            str, Field(default="A1", description="For load: the table's top-left cell.")
+        ] = "A1",
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_write_query")
         path = _query_path(file_path, settings)
         wanted = (action or "").strip().lower()
-        if wanted not in {"set", "rename", "remove"}:
-            raise ToolError("action must be 'set', 'rename' or 'remove'.")
+        if wanted not in {"set", "rename", "remove", "load", "unload"}:
+            raise ToolError(
+                "action must be 'set', 'rename', 'remove', 'load' or 'unload'."
+            )
 
         import pyopenvba
 
@@ -188,6 +214,30 @@ def register(server: MCPServer, settings: Settings) -> None:
                         raise ToolError("new_name is required for action='rename'.")
                     book.rename_query(query_name, new_name.strip())
                     detail = {"renamed_from": query_name, "renamed_to": new_name.strip()}
+                elif wanted == "load":
+                    if not columns:
+                        raise ToolError(
+                            "columns is required for action='load'. The connection names the "
+                            "columns the query returns, and knowing them means running the "
+                            "query, which nothing here does. Give the names you expect; Excel "
+                            "settles them against the real result on the first refresh."
+                        )
+                    query = _find_query(book, query_name)
+                    target = book.load_to_sheet(
+                        query.name,
+                        list(columns),
+                        sheet=sheet.strip() or 1,
+                        cell=cell.strip() or "A1",
+                    )
+                    detail = {
+                        "query": query.name,
+                        "loaded_to": str(target),
+                        "columns": list(columns),
+                    }
+                elif wanted == "unload":
+                    query = _find_query(book, query_name)
+                    was_loaded = bool(book.unload(query.name))
+                    detail = {"query": query.name, "was_loaded": was_loaded}
                 else:
                     # A query loaded onto a sheet is four things: the definition,
                     # a connection, a query table and the table itself. Removing

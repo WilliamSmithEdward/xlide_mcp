@@ -35,6 +35,25 @@ A port reimplements the *server*. It does not reimplement that knowledge, and it
 is never the place a format discovery lands: that belongs upstream, and reaches
 here through a version bump.
 
+### One debt against that rule
+
+`python/src/xlide_mcp/shapes.py` and `xlsx.py` hold format knowledge this server
+should not own: the worksheet grid, and the drawing layer where a button keeps
+the macro it runs. Both were ported from XLIDE because pyOpenVBA reached neither,
+and both are measured against what Excel actually writes.
+
+pyOpenVBA is taking on shapes. When that ships, `shapes.py` becomes a thin
+adapter over it rather than a second reader of the same bytes, and the same goes
+for the grid if pyOpenVBA ever covers it. The swap is provable rather than
+hopeful: the shape and cell conformance cases pin every answer those modules give,
+so an adapter that changes one fails.
+
+Until then, nothing new goes into either. Adding or deleting a shape means
+creating a drawing part, a content-type override and a relationship, and for a
+Forms control four parts that have to agree - exactly the knowledge that belongs
+upstream. It is deliberately not offered, and `xlide_set_shape_macro` covers what
+an agent is usually after: pointing a clickable thing at a Sub it just wrote.
+
 ## Layout
 
 ```
@@ -42,7 +61,7 @@ contract/          tool-surface.json, conformance.json   generated, normative
 docs/porting.md    how a port is built and verified
 python/            the reference implementation
   src/xlide_mcp/   the server
-  tests/           293 without Office, 24 more with
+  tests/           295 without Office, 24 more with
   tools/           the two contract exporters
 <language>/        a port
 ```
@@ -55,7 +74,7 @@ Read [python/README.md](python/README.md) for the module layout and
 Then, in order:
 
 1. Change the Python implementation.
-2. `cd python && python -m pytest` - 293 tests, no Office needed.
+2. `cd python && python -m pytest` - 295 tests, no Office needed.
 3. `python -m ruff check src tests tools`
 4. `python tools/export_contract.py && python tools/export_conformance.py`
 5. On Windows with Office: `python -m pytest -m live` - 24 more.
