@@ -45,6 +45,7 @@ src/xlide_mcp/
   project.py        the VBA project: modules, kinds, guarded saves
   tokens.py         content tokens, the guard on a stale write
   xlsx.py           worksheet cells, read and written in the OOXML package
+  shapes.py         the drawing layer: buttons, shapes, and the macros they run
   errors.py         the one error type, and the helpers that build its message
   tools/
     discovery.py    list, summarize, validate, create, doctor
@@ -52,7 +53,7 @@ src/xlide_mcp/
     analysis.py     the build gate, and the rule catalogue
     forms.py        UserForm and Access designs
     powerquery.py   the M code beside the VBA
-    sheets.py       cells and formulas
+    sheets.py       cells, formulas, and the shapes on a sheet
     sync.py         export and import .bas/.cls, previewed
     vcs.py          what changed inside the file since a git revision
     execution.py    macros, tests and compile checks in real Office
@@ -69,8 +70,8 @@ live layer needs the VBE add-in running.
 ## Test
 
 ```bash
-python -m pytest                 # 138 tests, no Office needed
-python -m pytest -m live         # 9 more, real Office, Windows only
+python -m pytest                 # 150 tests, no Office needed
+python -m pytest -m live         # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```
 

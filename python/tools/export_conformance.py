@@ -99,6 +99,24 @@ FIXTURES: dict[str, Any] = {
         "modules": [{"name": "Helpers", "kind": "standard", "source": HELPERS}],
         "git": {"commit_message": "the workbook as it was", "attributes": "*.xlsm binary"},
     },
+    "shapes_workbook": {
+        "kind": "shipped-binary",
+        "file_name": "Shapes.xlsm",
+        "repository_path": "python/tests/fixtures/shapes.xlsm",
+        "why": (
+            "The one fixture shipped as a binary rather than described. A Forms-toolbar "
+            "button lives in a VML shape, a ctrlProp part, a <controls> entry and a hidden "
+            "DrawingML twin, and only Excel writes all four in agreement, so no library can "
+            "build this. Copy it from the repository. Excel 16 authored it, and "
+            "python/tests/test_shapes_live.py rebuilds it and checks it still reads the same."
+        ),
+        "contents": (
+            "One sheet, Controls: RunButton, a Forms button at B2:C3 running "
+            "Module1.DoTheThing with the caption 'Run it'; GoShape, a rectangle at E2:G4 "
+            "running the same procedure with the text 'Go'; Ready, a check box at B6:D7 "
+            "captioned 'Ready?' and linked to $D$6."
+        ),
+    },
     "plain_workbook": {
         "kind": "excel-workbook",
         "file_name": "Data.xlsx",
@@ -855,6 +873,51 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "applied", "equals": False},
                 {"path": "plan", "at_least": 1},
+            ],
+        )
+    )
+
+    # ----------------------------------------------------------------- shapes
+    out.append(
+        case(
+            "shapes.a-button-carries-the-macro-it-runs",
+            "The link an agent is usually actually after. A button on a sheet starts the "
+            "automation, and nothing else in the surface shows that a Sub is reachable from "
+            "one; an agent renaming that Sub has no way to know an OnAction names it, "
+            "because nothing rewrites an OnAction.",
+            "shapes_workbook",
+            [step("xlide_list_shapes", {"file_path": "${fixture}"})],
+            [
+                {"path": "shape_count", "equals": 3},
+                {"path": "macros_run_by_shapes", "at_least": 2},
+                {"path": "macros_run_by_shapes", "contains": "Module1.DoTheThing"},
+                {"path": "sheets[0].shapes", "contains": '"kind": "button"'},
+                {"path": "sheets[0].shapes", "contains": '"cells": "B2:C3"'},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "shapes.a-visible-control-is-not-reported-hidden",
+            "Excel marks the DrawingML twin of every form control hidden, visible or not. "
+            "Reading that flag off the twin reports every button on every sheet as hidden, "
+            "which is worse than not reporting it at all; the VML style is the answer.",
+            "shapes_workbook",
+            [step("xlide_list_shapes", {"file_path": "${fixture}"})],
+            [{"path": "sheets[0].shapes", "not_contains": '"hidden": true'}],
+        )
+    )
+    out.append(
+        case(
+            "shapes.a-check-box-carries-its-linked-cell-and-no-macro",
+            "A control that runs nothing must not be given a macro, and the cell it writes "
+            "to is how a reader works out what it is for.",
+            "shapes_workbook",
+            [step("xlide_list_shapes", {"file_path": "${fixture}", "sheet": "controls"})],
+            [
+                {"path": "sheets[0].sheet", "equals": "Controls"},
+                {"path": "sheets[0].shapes", "contains": '"linked_cell": "$D$6"'},
+                {"path": "sheets[0].shapes", "contains": '"kind": "checkBox"'},
             ],
         )
     )

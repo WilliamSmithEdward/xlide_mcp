@@ -43,6 +43,13 @@
         "attributes": "*.xlsm binary"
       }
     },
+    "shapes_workbook": {
+      "kind": "shipped-binary",
+      "file_name": "Shapes.xlsm",
+      "repository_path": "python/tests/fixtures/shapes.xlsm",
+      "why": "The one fixture shipped as a binary rather than described. A Forms-toolbar button lives in a VML shape, a ctrlProp part, a <controls> entry and a hidden DrawingML twin, and only Excel writes all four in agreement, so no library can build this. Copy it from the repository. Excel 16 authored it, and python/tests/test_shapes_live.py rebuilds it and checks it still reads the same.",
+      "contents": "One sheet, Controls: RunButton, a Forms button at B2:C3 running Module1.DoTheThing with the caption 'Run it'; GoShape, a rectangle at E2:G4 running the same procedure with the text 'Go'; Ready, a check box at B6:D7 captioned 'Ready?' and linked to $D$6."
+    },
     "plain_workbook": {
       "kind": "excel-workbook",
       "file_name": "Data.xlsx",
@@ -55,7 +62,7 @@
       ]
     }
   },
-  "case_count": 39,
+  "case_count": 42,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -986,6 +993,91 @@
         {
           "path": "plan",
           "at_least": 1
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-button-carries-the-macro-it-runs",
+      "why": "The link an agent is usually actually after. A button on a sheet starts the automation, and nothing else in the surface shows that a Sub is reachable from one; an agent renaming that Sub has no way to know an OnAction names it, because nothing rewrites an OnAction.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shape_count",
+          "equals": 3
+        },
+        {
+          "path": "macros_run_by_shapes",
+          "at_least": 2
+        },
+        {
+          "path": "macros_run_by_shapes",
+          "contains": "Module1.DoTheThing"
+        },
+        {
+          "path": "sheets[0].shapes",
+          "contains": "\"kind\": \"button\""
+        },
+        {
+          "path": "sheets[0].shapes",
+          "contains": "\"cells\": \"B2:C3\""
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-visible-control-is-not-reported-hidden",
+      "why": "Excel marks the DrawingML twin of every form control hidden, visible or not. Reading that flag off the twin reports every button on every sheet as hidden, which is worse than not reporting it at all; the VML style is the answer.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "sheets[0].shapes",
+          "not_contains": "\"hidden\": true"
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-check-box-carries-its-linked-cell-and-no-macro",
+      "why": "A control that runs nothing must not be given a macro, and the cell it writes to is how a reader works out what it is for.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "controls"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "sheets[0].sheet",
+          "equals": "Controls"
+        },
+        {
+          "path": "sheets[0].shapes",
+          "contains": "\"linked_cell\": \"$D$6\""
+        },
+        {
+          "path": "sheets[0].shapes",
+          "contains": "\"kind\": \"checkBox\""
         }
       ]
     },

@@ -51,7 +51,7 @@ in, which is usually worse than the thing being unavailable.
 
 | Layer | Tools | Needs |
 |---|---|---|
-| Files | discovery, modules, analysis, forms, Power Query, sheets, sync, git changes | Nothing. Any platform, git on the PATH for `xlide_git_changes`. |
+| Files | discovery, modules, analysis, forms, Power Query, sheets, shapes, sync, git changes | Nothing. Any platform, git on the PATH for `xlide_git_changes`. |
 | Execution | `xlide_run_macro`, `xlide_run_vba`, `xlide_run_tests`, `xlide_compile_check` | Windows, desktop Office. |
 | Live | `xlide_live_*` | A running `xlide_vbide` session. |
 

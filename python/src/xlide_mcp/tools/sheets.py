@@ -109,6 +109,51 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
     @server.tool(
+        name="xlide_list_shapes",
+        title="List shapes and buttons",
+        annotations=read_only("List shapes and buttons"),
+        description=(
+            "Lists what sits on a worksheet's drawing layer: buttons, form controls, "
+            "AutoShapes, text boxes, pictures, charts and groups, each with the cells it "
+            "covers and, where it has one, the macro a click runs. Call it when asked how a "
+            "workbook is started, or before renaming a Sub: a button's OnAction names a "
+            "procedure and nothing rewrites it. ActiveX controls are listed but have no "
+            "macro; their code is event procedures in the sheet's module."
+        ),
+    )
+    def list_shapes(
+        file_path: Annotated[str, Field(description="Absolute path to the Excel file.")],
+        sheet: Annotated[
+            str,
+            Field(default="", description="One worksheet. Empty lists every sheet's shapes."),
+        ] = "",
+    ) -> dict[str, Any]:
+        path = _excel_path(file_path, settings)
+        from ..shapes import read_sheet_shapes
+
+        by_sheet = read_sheet_shapes(path, sheet.strip() or None)
+        sheets = [
+            {"sheet": name, "shapes": [shape.summary() for shape in shapes]}
+            for name, shapes in by_sheet.items()
+        ]
+        total = sum(len(entry["shapes"]) for entry in sheets)
+        with_macros = [
+            {"sheet": entry["sheet"], "shape": shape["name"], "macro": shape["macro"]}
+            for entry in sheets
+            for shape in entry["shapes"]
+            if shape.get("macro")
+        ]
+        result: dict[str, Any] = {
+            "path": str(path),
+            "shape_count": total,
+            "sheets": sheets,
+        }
+        if with_macros:
+            # The link an agent is usually actually after, lifted out of the tree.
+            result["macros_run_by_shapes"] = with_macros
+        return result
+
+    @server.tool(
         name="xlide_write_cells",
         title="Write cells",
         annotations=writes("Write cells", destructive=True),

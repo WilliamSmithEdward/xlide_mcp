@@ -47,6 +47,15 @@ class ToolFailure(Exception):
         self.message = message
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--rebuild-fixture",
+        action="store_true",
+        default=False,
+        help="Let a live test overwrite a committed binary fixture. Off by default.",
+    )
+
+
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     return tmp_path
@@ -148,3 +157,20 @@ def committed_workbook(workspace: Path, workbook: Path) -> Path:
     git("add", "-A")
     git("commit", "-m", "the workbook as it was")
     return workbook
+
+
+@pytest.fixture
+def shapes_workbook(workspace: Path) -> Path:
+    """The shipped shapes fixture, copied into the workspace so its path resolves.
+
+    Committed as a binary because a Forms-toolbar button cannot be built without
+    Excel; tests/test_shapes_live.py rebuilds it and checks it still reads the same.
+    """
+    import shutil
+
+    source = Path(__file__).parent / "fixtures" / "shapes.xlsm"
+    if not source.is_file():
+        pytest.skip(f"{source} is missing")
+    target = workspace / "Shapes.xlsm"
+    shutil.copy2(source, target)
+    return target

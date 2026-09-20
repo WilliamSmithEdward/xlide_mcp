@@ -519,6 +519,39 @@ class Workbook:
         """The sheet's own spelling of a name the caller matched without case."""
         return self._sheet(name).name
 
+    # Parts of the package other than the grid: the drawing layer reads through
+    # these rather than opening the archive a second time.
+
+    def part_text(self, part: str) -> str:
+        """One part's text. Raises if the package does not hold it."""
+        return self._text(part)
+
+    def optional_part_text(self, part: str) -> str | None:
+        """One part's text, or None where the package does not hold it."""
+        return self._optional_text(part)
+
+    def part_relationships(self, part: str) -> dict[str, dict[str, str]]:
+        """A part's relationships by id, each resolved to a package part and type."""
+        rels_part = _relationships_part(part)
+        xml = self._optional_text(rels_part)
+        if xml is None:
+            return {}
+        out: dict[str, dict[str, str]] = {}
+        position = 0
+        while (tag := next_tag(xml, position)) is not None:
+            position = tag.end
+            if tag.name != "Relationship":
+                continue
+            identifier = tag.attrs.get("Id", "")
+            target = tag.attrs.get("Target", "")
+            if not identifier or not target:
+                continue
+            out[identifier] = {
+                "part": _resolve_part(part, target),
+                "type": tag.attrs.get("Type", ""),
+            }
+        return out
+
     def _sheet(self, name: str) -> SheetSummary:
         wanted = (name or "").strip().casefold()
         for sheet in self.sheets():
@@ -972,6 +1005,14 @@ def _drop_relationship(rels: str, relationship_type: str) -> str:
         if tag.name == "Relationship" and tag.attrs.get("Type") == relationship_type:
             return rels[: tag.start] + rels[tag.end :]
     return rels
+
+
+def _relationships_part(part: str) -> str:
+    """Where a part's relationships live: _rels/<name>.rels beside it."""
+    if "/" in part:
+        directory, name = part.rsplit("/", 1)
+        return f"{directory}/_rels/{name}.rels"
+    return f"_rels/{part}.rels"
 
 
 def _resolve_part(source_part: str, target: str) -> str:

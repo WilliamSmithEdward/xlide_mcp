@@ -6,3 +6,8 @@
 # string literals), so it survives this untouched. Nothing in the repository
 # stores VBA as raw CRLF text; the fixtures are built at test time, not
 # committed, which is what keeps that true.
+
+# The one binary fixture in the repository. It was authored by Excel 16, because
+# a workbook with a Forms-toolbar button cannot be built without Excel, and a
+# normalizing filter would corrupt the container.
+python/tests/fixtures/** binary

@@ -6,7 +6,7 @@ repository must expose and what its answers must mean.
 | File | What it pins | Regenerate with |
 |---|---|---|
 | `tool-surface.json` | Every tool: name, description, argument schema, and whether it writes. | `python tools/export_contract.py` |
-| `conformance.json` | What the answers mean: 39 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
+| `conformance.json` | What the answers mean: 42 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
 
 Both are **derived from the Python implementation**, never hand-edited. A
 hand-maintained contract drifts the first time someone adds an argument and
@@ -37,7 +37,7 @@ diff rather than a feeling.
   "contract_version": "0.1.0",
   "reference_implementation": "python",
   "digest": "sha256:...",
-  "tool_count": 35,
+  "tool_count": 36,
   "tools": [ { "name": "...", "description": "...", "input_schema": {...}, "annotations": {...} } ],
   "generated_with": {
     "upstream": { "pyOpenVBA": "5.2.4", "pyvbaanalysis": "2.1.1", "pyvbaharness": "1.1.2" }
@@ -92,6 +92,10 @@ nobody can decide whether to change, and the Python suite refuses one.
 built from the application's own template with one named module in it; a runner
 builds it with whatever that language binds to. Shipping the binaries instead
 would pin one version of one template forever.
+
+One fixture is the exception and says so: `shapes_workbook` carries a
+`repository_path`, because a Forms-toolbar button lives in four parts that only
+Excel writes in agreement, and no library can build one. Copy that file.
 
 **Placeholders** inside arguments:
 
