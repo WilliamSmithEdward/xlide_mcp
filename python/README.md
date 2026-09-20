@@ -79,7 +79,7 @@ With uv instead, so that nothing has to be installed first:
 }
 ```
 
-uvx takes the newest published version unless you pin it, as `xlide-mcp@0.1.0`.
+uvx takes the newest published version unless you pin it, as `xlide-mcp@1.0.0`.
 
 `--root` is the security boundary. Every path a tool accepts is resolved,
 symlinks included, and refused unless it lands inside a root.
