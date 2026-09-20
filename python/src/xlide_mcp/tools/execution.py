@@ -32,6 +32,11 @@ from ..hosts import HostInfo, require_openable, require_readable
 from ..paths import require_writable, resolve_path
 from ._common import read_only, writes
 
+# How long to wait for the previous session to let go before giving up. An
+# application takes a couple of seconds to exit after its session closes, and a
+# caller making two tool calls in a row should not have to know that.
+SESSION_LOCK_WAIT_SECONDS = 60.0
+
 _SESSION_CLASSES = {
     "excel": "ExcelSession",
     "word": "WordSession",
@@ -272,6 +277,13 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
+        if info.host == "access":
+            raise ToolError(
+                "Access has no read-only automation mode, so a compile check there would "
+                "write to the database, and a read-only check that writes is not one. "
+                "xlide_analyze answers the same question without opening Access at all, and "
+                "Access recompiles the project itself the next time it opens the file."
+            )
         deadline = clamp_timeout(timeout or None, settings)
         with _session(info) as session:
             _open_document(session, path, info, read_only=True)
@@ -413,8 +425,18 @@ def _session(info: HostInfo) -> Any:
         raise needs_package(f"Running VBA in {info.title}", "pyvbaharness", "live") from exc
 
     session_class = getattr(pyvbaharness, _SESSION_CLASSES[info.host])
+    # Office automation is sequential by contract: one session per application
+    # per machine. Two tool calls in a row are the ordinary case, though, and the
+    # first application takes a couple of seconds to exit after its session
+    # closes - measured, three grid calls in succession collided on the second.
+    # Waiting is what the caller meant; failing because the previous call has not
+    # finished tidying up is not.
     try:
-        return session_class()
+        config = pyvbaharness.HarnessConfig(lock_wait_s=SESSION_LOCK_WAIT_SECONDS)
+    except TypeError:  # pragma: no cover - an older harness without the setting
+        config = None
+    try:
+        return session_class(config) if config is not None else session_class()
     except pyvbaharness.HarnessError as exc:
         raise ToolError(_harness_refusal(exc, info)) from exc
 
@@ -439,8 +461,17 @@ def _harness_refusal(exc: Exception, info: HostInfo) -> str:
 
 
 def _open_document(session: Any, path: Path, info: HostInfo, read_only: bool) -> None:
-    # Access writes into the database as the edit is made rather than at save
-    # time, which is why read_only is explicit on every host rather than implied.
+    # Access has no read-only automation mode at all: running anything there
+    # writes to the database as it goes. Refusing before the call names the
+    # decision the user has to make, rather than passing through a message about
+    # a parameter the caller never saw.
+    if info.host == "access" and read_only:
+        raise ToolError(
+            f"Access cannot open {path.name} read-only for automation: running code there "
+            "writes to the database as it goes, and injecting a module changes the file "
+            "immediately rather than at a save. Pass read_only=false to allow that, and ask "
+            "the user first, because it cannot be undone."
+        )
     try:
         session.open_document(str(path), read_only=read_only)
     except Exception as exc:

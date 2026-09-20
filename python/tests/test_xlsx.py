@@ -195,18 +195,31 @@ def test_unknown_sheet_names_the_ones_that_exist(
     assert "Sheet1" in refusal.value.message
 
 
-def test_cells_are_refused_on_a_non_ooxml_workbook(
+def test_a_binary_workbook_is_not_read_from_the_package(
     call: Callable[..., Any], workspace: Path
 ) -> None:
+    """A .xlsb keeps its grid in binary records rather than OOXML. Where Excel is
+    not there to answer, the refusal says why and what would change it; where it
+    is, Excel answers and the result says so. Either way the package reader does
+    not pretend."""
     import pyopenvba
+
+    from xlide_mcp import grid
 
     binary = workspace / "Binary.xlsb"
     with pyopenvba.ExcelFile.create_new(binary) as book:
         book.save()
-    with pytest.raises(ToolFailure) as refusal:
-        call("xlide_list_sheets", file_path=str(binary))
-    assert ".xlsb" in refusal.value.message
-    assert "VBA project in this file is still readable" in refusal.value.message
+
+    if not grid.excel_available():
+        with pytest.raises(ToolFailure) as refusal:
+            call("xlide_list_sheets", file_path=str(binary))
+        assert ".xlsb" in refusal.value.message
+        assert "VBA project in the file is still fully readable" in refusal.value.message
+        return
+
+    result = call("xlide_list_sheets", file_path=str(binary), timeout=240)
+    assert result["source"] == "excel"
+    assert result["sheets"]
 
 
 def test_a_huge_range_is_refused_rather_than_returned(

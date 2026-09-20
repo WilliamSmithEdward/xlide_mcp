@@ -16,7 +16,8 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
-from ..config import Settings
+from .. import grid
+from ..config import Settings, clamp_timeout
 from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
@@ -38,11 +39,18 @@ def register(server: MCPServer, settings: Settings) -> None:
     )
     def list_sheets(
         file_path: Annotated[str, Field(description="Absolute path to the Excel file.")],
+        timeout: Annotated[
+            float,
+            Field(default=0, ge=0, description="Seconds allowed if Excel has to answer."),
+        ] = 0,
     ) -> dict[str, Any]:
-        path = _excel_path(file_path, settings)
+        path, info = _any_excel(file_path, settings)
+        if not info.supports_sheets:
+            return _through_excel_sheets(path, info, clamp_timeout(timeout or None, settings))
         book = Workbook(path)
         return {
             "path": str(path),
+            "source": "file",
             "sheets": [
                 {
                     "name": sheet.name,
@@ -81,17 +89,28 @@ def register(server: MCPServer, settings: Settings) -> None:
                 description="'values', 'formulas' or 'both'.",
             ),
         ] = "values",
+        timeout: Annotated[
+            float,
+            Field(default=0, ge=0, description="Seconds allowed if Excel has to answer."),
+        ] = 0,
     ) -> dict[str, Any]:
-        path = _excel_path(file_path, settings)
+        path, info = _any_excel(file_path, settings)
         wanted = (include or "values").strip().lower()
         if wanted not in {"values", "formulas", "both"}:
             raise ToolError("include must be 'values', 'formulas' or 'both'.")
+        if not info.supports_sheets:
+            return _through_excel_read(
+                path, info, sheet, cell_range, wanted,
+                clamp_timeout(timeout or None, settings),
+            )
 
         book = Workbook(path)
         area, grid = book.read(sheet, cell_range)
         result: dict[str, Any] = {
             "path": str(path),
             "sheet": book.canonical_sheet_name(sheet),
+            "source": "file",
+            "recalculated": False,
             "range": str(area),
             "rows": area.last_row - area.first_row + 1,
             "columns": area.last_column - area.first_column + 1,
@@ -234,11 +253,20 @@ def register(server: MCPServer, settings: Settings) -> None:
                 )
             ),
         ],
+        timeout: Annotated[
+            float,
+            Field(default=0, ge=0, description="Seconds allowed if Excel has to do the write."),
+        ] = 0,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_write_cells")
-        path = _excel_path(file_path, settings)
+        path, info = _any_excel(file_path, settings)
         if not data:
             raise ToolError("data is empty; nothing to write.")
+        if not info.supports_sheets:
+            return _through_excel_write(
+                path, info, sheet, start_cell, data,
+                clamp_timeout(timeout or None, settings),
+            )
 
         book = Workbook(path)
         sheet_name = book.canonical_sheet_name(sheet)
@@ -268,6 +296,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             "sheet": sheet_name,
             "range": str(written),
             "cells_written": count,
+            "source": "file",
             "cells_overwritten": replaced_values + replaced_formulas,
             "formulas_replaced": replaced_formulas,
             "saved": True,
@@ -286,15 +315,100 @@ def register(server: MCPServer, settings: Settings) -> None:
 
 
 def _excel_path(raw: str, settings: Settings) -> Path:
-    path = resolve_path(raw, settings)
-    info = host_info(path)
-    if info.host != "excel":
-        raise ToolError(
-            f"{path.name} is a {info.title} file. Worksheet cells exist in Excel files only."
-        )
+    """An Excel file whose grid the package reader can open."""
+    path, info = _any_excel(raw, settings)
     if not info.supports_sheets:
         raise ToolError(
             f"Worksheet cells are read from the OOXML package, which {info.extension} is not. "
             "Supported: .xlsx, .xlsm and .xlam. The VBA project in this file is still readable."
         )
     return path
+
+
+def _any_excel(raw: str, settings: Settings) -> tuple[Path, Any]:
+    """An Excel file of any format, with how its grid has to be reached."""
+    path = resolve_path(raw, settings)
+    info = host_info(path)
+    if info.host != "excel":
+        raise ToolError(
+            f"{path.name} is a {info.title} file. Worksheet cells exist in Excel files only."
+        )
+    return path, info
+    if not info.supports_sheets:
+        raise ToolError(
+            f"Worksheet cells are read from the OOXML package, which {info.extension} is not. "
+            "Supported: .xlsx, .xlsm and .xlam. The VBA project in this file is still readable."
+        )
+    return path
+
+
+# --------------------------------------------------- the formats Excel opens
+
+
+def _through_excel_sheets(path: Path, info: Any, timeout: float) -> dict[str, Any]:
+    if not grid.excel_available():
+        raise grid.refuse(info, "Listing worksheets")
+    sheets = grid.survey_sheets(path, timeout)
+    return {
+        "path": str(path),
+        "source": "excel",
+        "sheets": [
+            {"name": s.name, "used_range": s.used_range, "hidden": s.hidden} for s in sheets
+        ],
+        "named_ranges": [],
+        "note": (
+            f"{info.extension} keeps its grid in a binary format this server does not read, "
+            "so Excel answered. Named ranges are not surveyed on this path."
+        ),
+    }
+
+
+def _through_excel_read(
+    path: Path, info: Any, sheet: str, cell_range: str, include: str, timeout: float
+) -> dict[str, Any]:
+    if not grid.excel_available():
+        raise grid.refuse(info, "Reading cells")
+    if include != "values":
+        raise ToolError(
+            f"Only values can be read from {info.extension}. Excel answers this one, and it "
+            "returns what each cell evaluates to rather than the formula behind it."
+        )
+    rows = grid.read_cells(path, sheet, cell_range, timeout)
+    return {
+        "path": str(path),
+        "sheet": sheet,
+        "source": "excel",
+        "recalculated": True,
+        "range": cell_range,
+        "rows": len(rows),
+        "columns": max((len(r) for r in rows), default=0),
+        "values": rows,
+        "note": (
+            f"{info.extension} keeps its grid in a binary format this server does not read, "
+            "so Excel opened the workbook and these values are the ones it has just "
+            "calculated, not a cached result."
+        ),
+    }
+
+
+def _through_excel_write(
+    path: Path, info: Any, sheet: str, start_cell: str, data: list[list[Any]], timeout: float
+) -> dict[str, Any]:
+    if not grid.excel_available():
+        raise grid.refuse(info, "Writing cells")
+    result = grid.write_cells(path, sheet, start_cell, data, timeout)
+    rows = len(data)
+    columns = max((len(row) for row in data), default=0)
+    return {
+        "path": str(path),
+        "sheet": sheet,
+        "source": "excel",
+        "cells_written": rows * columns,
+        "saved": bool(result.get("saved")),
+        "recalculated": True,
+        "note": (
+            f"{info.extension} keeps its grid in a binary format this server does not write, "
+            "so Excel made the change and saved the workbook in its own format. Unlike a "
+            "write to the package, this one did recalculate."
+        ),
+    }

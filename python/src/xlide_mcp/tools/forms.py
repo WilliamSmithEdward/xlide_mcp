@@ -48,6 +48,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
+            orphans = _orphaned(handle, info)
             listed = []
             for form in _forms(handle, info.title):
                 entry: dict[str, Any] = {
@@ -55,17 +56,27 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "design": _design_kind(form),
                     "controls": len(form.walk()),
                 }
+                if form.name.casefold() in orphans:
+                    entry["orphaned"] = True
                 sections = _sections(form)
                 if sections:
                     entry["sections"] = sections
                 listed.append(entry)
-        return {
+        result: dict[str, Any] = {
             "path": str(path),
             "host": info.host,
             "geometry_unit": "twips" if info.host == "access" else "points",
             "count": len(listed),
             "forms": listed,
         }
+        if any(entry.get("orphaned") for entry in listed):
+            result["note"] = (
+                "A form marked orphaned has a designer storage and no code module, so the "
+                f"{info.title} editor does not show it and its code cannot be written. The "
+                "bytes are still in the file. It is usually left by a tool that deleted or "
+                "renamed the module without the design."
+            )
+        return result
 
     @server.tool(
         name="xlide_read_form",
@@ -471,6 +482,24 @@ def _find_form(handle: Any, name: str, host_title: str) -> Any:
             return form
     listed = ", ".join(f.name for f in forms) or "(none)"
     raise ToolError(f"No form or report named {name!r}. In this file: {listed}.")
+
+
+def _orphaned(handle: Any, info: Any) -> set[str]:
+    """Designs with a storage and no module, folded for comparison.
+
+    pyOpenVBA puts it plainly: a storage without a module is not a component the
+    host will show. Counting one as an ordinary form reports a form the user
+    cannot see and cannot open, and saying nothing about it hides a file that
+    needs repairing. Access names a design's module `Form_X`, so the pairing is
+    only checkable on the hosts that name both the same.
+    """
+    if info.host == "access":
+        return set()
+    try:
+        modules = {m.name.casefold() for m in handle.vba_project().modules}
+        return {f.name.casefold() for f in handle.forms()} - modules
+    except Exception:
+        return set()
 
 
 def _design_kind(design: Any) -> str:

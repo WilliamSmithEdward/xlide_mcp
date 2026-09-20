@@ -100,7 +100,7 @@ session inside the Visual Basic Editor.
 
 | Host | VBA | Power Query | Cells |
 |---|---|---|---|
-| Excel | `.xlsm` `.xlsb` `.xlam` `.xls` | `.xlsx` `.xlsm` `.xlsb` `.xlam` | `.xlsx` `.xlsm` `.xlam` |
+| Excel | `.xlsm` `.xlsb` `.xlam` `.xls` | `.xlsx` `.xlsm` `.xlsb` `.xlam` | `.xlsx` `.xlsm` `.xlam`, and `.xlsb` `.xls` through Excel |
 | Word | `.docm` `.dotm` `.doc` | - | - |
 | PowerPoint | `.pptm` `.potm` | - | - |
 | Access | `.accdb` `.mdb` | - | - |
@@ -108,6 +108,11 @@ session inside the Visual Basic Editor.
 
 A recognized extension outside those sets is listed with the reason it cannot be
 opened, rather than left silently out of a listing.
+
+A `.xlsb` keeps its grid in binary records and a `.xls` inside a compound file,
+neither of them OOXML. On Windows with Excel, those go through Excel, and the
+result says `source: excel` and `recalculated: true`, because opening the
+workbook is what produced the values.
 
 ## The rules it works by
 
@@ -141,8 +146,8 @@ them whether or not the user configured anything.
 ```bash
 cd python
 pip install -e ".[dev,live]"
-python -m pytest              # 248 tests, no Office needed
-python -m pytest -m live      # 12 more, real Office, Windows only
+python -m pytest              # 293 tests, no Office needed
+python -m pytest -m live      # 24 more, real Office, Windows only
 python -m ruff check src tests tools
 ```
 

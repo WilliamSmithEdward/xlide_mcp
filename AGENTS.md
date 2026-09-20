@@ -42,7 +42,7 @@ contract/          tool-surface.json, conformance.json   generated, normative
 docs/porting.md    how a port is built and verified
 python/            the reference implementation
   src/xlide_mcp/   the server
-  tests/           248 without Office, 12 more with
+  tests/           293 without Office, 24 more with
   tools/           the two contract exporters
 <language>/        a port
 ```
@@ -55,10 +55,10 @@ Read [python/README.md](python/README.md) for the module layout and
 Then, in order:
 
 1. Change the Python implementation.
-2. `cd python && python -m pytest` - 248 tests, no Office needed.
+2. `cd python && python -m pytest` - 293 tests, no Office needed.
 3. `python -m ruff check src tests tools`
 4. `python tools/export_contract.py && python tools/export_conformance.py`
-5. On Windows with Office: `python -m pytest -m live` - 12 more.
+5. On Windows with Office: `python -m pytest -m live` - 24 more.
 
 Step 4 is not optional and cannot be skipped quietly: `tests/test_contract.py`
 fails when either artifact is stale, and so does CI. The contract is derived from

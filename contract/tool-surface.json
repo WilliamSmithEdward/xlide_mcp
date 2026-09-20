@@ -1,6 +1,6 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:9d47e552b6f401fdc34e0960209c8b448c877d4efec9aa9ebca2eefbd2226527",
+  "digest": "sha256:3cc4cd67365d7fa8f7dc14910b85fc91598dc7e5b57a45816a50b02ae4953a12",
   "generated_with": {
     "upstream": {
       "pyOpenVBA": "5.2.4",
@@ -689,6 +689,13 @@
             "description": "Absolute path to the Excel file.",
             "title": "File Path",
             "type": "string"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds allowed if Excel has to answer.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
           }
         },
         "required": [
@@ -946,6 +953,13 @@
             "description": "Worksheet name, matched without case.",
             "title": "Sheet",
             "type": "string"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds allowed if Excel has to answer.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
           }
         },
         "required": [
@@ -1468,6 +1482,13 @@
             "description": "Top-left cell of the block, such as B2.",
             "title": "Start Cell",
             "type": "string"
+          },
+          "timeout": {
+            "default": 0,
+            "description": "Seconds allowed if Excel has to do the write.",
+            "minimum": 0,
+            "title": "Timeout",
+            "type": "number"
           }
         },
         "required": [
