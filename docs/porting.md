@@ -35,8 +35,9 @@ discovery lands.
 3. **The workspace boundary.** Path arguments resolve, symlinks and all, before
    the containment check. Two conformance cases cover it and they are the two
    worth failing the build over.
-4. **The same refusals.** Sixteen cases assert a failure message. A port that
-   succeeds where the contract refuses has a different product, not a lenient one.
+4. **The same refusals.** 17 of the 65 conformance cases assert a failure
+   message. A port that succeeds where the contract refuses has a different
+   product, not a lenient one.
 
 A port does not owe the internal structure. How it opens a container, whether it
 has an equivalent of `project.py`, what its modules are called: all of that is

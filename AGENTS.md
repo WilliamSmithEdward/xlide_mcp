@@ -60,28 +60,63 @@ an agent is usually after: pointing a clickable thing at a Sub it just wrote.
 contract/          tool-surface.json, conformance.json   generated, normative
 docs/porting.md    how a port is built and verified
 python/            the reference implementation
-  src/xlide_mcp/   the server
-  tests/           295 without Office, 24 more with
+  tests/           the suite; the ones marked live need Windows with Office
   tools/           the two contract exporters
 <language>/        a port
 ```
 
+Inside `python/src/xlide_mcp/`:
+
+```
+server.py         builds the MCPServer and registers every tool group
+instructions.py   what the calling model is told at initialize
+config.py         settings, and the workspace roots that bound every path
+paths.py          resolving a caller's path, or refusing it with the reason
+hosts.py          extension -> host, and what can be done with each
+project.py        the VBA project: modules, kinds, guarded saves
+tokens.py         content tokens, the guard on a stale write
+xlsx.py           worksheet cells, read and written in the OOXML package
+grid.py           the same, through Excel, for the formats that are not OOXML
+shapes.py         the drawing layer: buttons, shapes, and the macros they run
+vb6.py            a .vbp read as a project, through the same surface
+errors.py         the one error type, and the helpers that build its message
+tools/
+  discovery.py    list, summarize, validate, create, doctor
+  modules.py      read, write, rename, delete, search, list procedures
+  analysis.py     the build gate, and the rule catalogue
+  catalog.py      project references, and an Access database's tables
+  forms.py        UserForm and Access designs
+  powerquery.py   the M code beside the VBA
+  sheets.py       cells, formulas, and the shapes on a sheet
+  sync.py         export and import .bas/.cls, previewed
+  vcs.py          what changed inside the file since a git revision
+  execution.py    macros, tests and compile checks in real Office
+  live.py         a running xlide_vbide session in the VBE
+```
+
+Tool groups are split by what they reach, because that is also how they fail: the
+file layer works anywhere, execution needs Windows with the application, and the
+live layer needs the VBE add-in running.
+
 ## Before you change a tool
 
-Read [python/README.md](python/README.md) for the module layout and
-[contract/README.md](contract/README.md) for what the generated files mean.
-
+Read [contract/README.md](contract/README.md) for what the generated files mean.
 Then, in order:
 
 1. Change the Python implementation.
-2. `cd python && python -m pytest` - 295 tests, no Office needed.
+2. `cd python && python -m pytest` - no Office needed.
 3. `python -m ruff check src tests tools`
 4. `python tools/export_contract.py && python tools/export_conformance.py`
-5. On Windows with Office: `python -m pytest -m live` - 24 more.
+5. A new or renamed tool goes in both READMEs: [README.md](README.md) and
+   [python/README.md](python/README.md), which is the PyPI page.
+6. On Windows with Office: `python -m pytest -m live`.
 
-Step 4 is not optional and cannot be skipped quietly: `tests/test_contract.py`
-fails when either artifact is stale, and so does CI. The contract is derived from
-the running server precisely so it cannot drift from it.
+Steps 4 and 5 are not optional and cannot be skipped quietly. The contract is
+derived from the running server precisely so it cannot drift from it, and
+`tests/test_contract.py` fails when either artifact is stale.
+`tests/test_docs.py` does the same for the documents: it reads the tool names and
+the conformance counts out of the contract, so a tool nobody documented, a name
+left behind by a rename, and a count that no longer matches all fail the build.
 
 ## What this server owes its callers
 
@@ -106,7 +141,7 @@ Rules the surface holds to, each of which has a conformance case behind it:
   implementation that reported a computed value it did not compute would be
   lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 16 of the 63 conformance cases
+A refusal is as much of the contract as a success: 17 of the 65 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 
@@ -124,3 +159,14 @@ read from it. Bump that line, regenerate the contract, tag `v*.*.*`.
 
 A release title is the tag and nothing else. Commit subjects follow the
 convention already in `git log`, not an older style still visible in it.
+
+Pushing a `v*.*.*` tag builds the package, publishes it to PyPI through Trusted
+Publishing and cuts the GitHub release. The workflow refuses a tag that does not
+match `_version.py`, and refuses to publish at all if the generated contract is
+out of date, because a release whose tool surface does not match its artifacts is
+one every port would be verified against wrongly.
+
+```bash
+# from the repository root, with CHANGELOG.md written for the version
+git tag v0.2.0 && git push origin v0.2.0
+```

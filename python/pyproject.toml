@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# 77 is where the SPDX `license` field below stopped being a deprecation.
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,18 +12,35 @@ dynamic = ["version"]
 description = "MCP server for the VBA, forms, Power Query and sheets inside Office files"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "William Smith" }]
-keywords = ["mcp", "vba", "office", "excel", "word", "powerpoint", "access", "agent"]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "vba",
+    "office",
+    "excel",
+    "word",
+    "powerpoint",
+    "access",
+    "power-query",
+    "agent",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    # No license classifier: the SPDX `license` field above replaces it, and
+    # having both is a deprecation with a date on it.
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business",
+    "Topic :: Software Development :: Code Generators",
     "Topic :: Software Development :: Quality Assurance",
 ]
 
@@ -46,6 +64,9 @@ xlide-mcp = "xlide_mcp.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/WilliamSmithEdward/xlide_mcp"
+Repository = "https://github.com/WilliamSmithEdward/xlide_mcp"
+Issues = "https://github.com/WilliamSmithEdward/xlide_mcp/issues"
+Changelog = "https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/CHANGELOG.md"
 
 [tool.setuptools.dynamic]
 version = { attr = "xlide_mcp._version.__version__" }

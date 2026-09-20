@@ -1,5 +1,10 @@
 # xlide-mcp
 
+[![PyPI version](https://img.shields.io/pypi/v/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
+[![Python versions](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
+[![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
+
 **An MCP server for the code inside Office files.** The VBA, the UserForms, the
 Power Query and the worksheet cells in Excel, Word, PowerPoint and Access
 documents, plus Visual Basic 6 projects, reachable by any agent that speaks the
@@ -44,8 +49,8 @@ upstream libraries, and ports track it. See [docs/porting.md](docs/porting.md).
 ## Install and run
 
 ```bash
-cd python
-pip install -e ".[live]"          # omit [live] off Windows
+pip install xlide-mcp              # reads and writes files, any platform
+pip install "xlide-mcp[live]"      # adds running macros and tests, Windows
 xlide-mcp --root /path/to/your/files
 ```
 
@@ -146,8 +151,8 @@ them whether or not the user configured anything.
 ```bash
 cd python
 pip install -e ".[dev,live]"
-python -m pytest              # 295 tests, no Office needed
-python -m pytest -m live      # 24 more, real Office, Windows only
+python -m pytest              # the file layer, no Office needed
+python -m pytest -m live      # the rest, real Office, Windows only
 python -m ruff check src tests tools
 ```
 

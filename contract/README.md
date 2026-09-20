@@ -6,7 +6,7 @@ repository must expose and what its answers must mean.
 | File | What it pins | Regenerate with |
 |---|---|---|
 | `tool-surface.json` | Every tool: name, description, argument schema, and whether it writes. | `python tools/export_contract.py` |
-| `conformance.json` | What the answers mean: 65 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
+| `conformance.json` | What the answers mean: 65 conformance cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
 
 Both are **derived from the Python implementation**, never hand-edited. A
 hand-maintained contract drifts the first time someone adds an argument and
@@ -113,8 +113,8 @@ Excel writes in agreement, and no library can build one. Copy that file.
 `path` walks `a.b[0].c`; a missing step reads as null, so absence is expressible.
 
 A step may instead declare `error_contains`, which requires that step to fail
-with that text in the message. Sixteen of the cases are refusals: what a server
-does when asked for something it should not do is as much of the contract as what
-it does when asked for something it should.
+with that text in the message. 17 of the 65 conformance cases are refusals: what
+a server does when asked for something it should not do is as much of the
+contract as what it does when asked for something it should.
 
 See [docs/porting.md](../docs/porting.md) for how to build a port against these.

@@ -1,0 +1,133 @@
+name: Publish to PyPI
+
+# A v*.*.* tag releases the Python package. The version lives in one place,
+# python/src/xlide_mcp/_version.py, and a tag that disagrees with it stops the
+# build rather than publishing a distribution whose number is a guess.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      # First, and before anything is installed, so a mistyped tag fails in
+      # seconds. _version.py imports nothing, so reading it needs no install.
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(python -c "import runpy; print(runpy.run_path('src/xlide_mcp/_version.py')['__version__'])")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "ERROR: tag '$TAG' does not match _version.py '$PKG'"
+            exit 1
+          fi
+          echo "Version check passed: $PKG"
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      - name: Test
+        run: python -m pytest
+
+      # A release whose tool surface does not match its generated artifacts is
+      # one every port would be verified against wrongly, so it does not ship.
+      - name: Contract is current
+        run: |
+          python tools/export_contract.py --check
+          python tools/export_conformance.py --check
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade build twine
+
+      - name: Build sdist + wheel
+        run: python -m build
+
+      - name: Validate metadata
+        run: python -m twine check dist/*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          # An action path is relative to the workspace, not to the job's
+          # working-directory.
+          name: dist
+          path: python/dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/xlide-mcp/
+    permissions:
+      # Required for PyPI Trusted Publishing (OIDC). No token is stored anywhere.
+      id-token: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract changelog section for this tag
+        id: notes
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="$TAG" '
+              $0 ~ "^## \\[" ver "\\]" { capture=1; next }
+              capture && /^## \[/ { exit }
+              capture { print }
+            ' CHANGELOG.md > release_notes.md
+          fi
+          if [ ! -s release_notes.md ]; then
+            echo "Release $TAG" > release_notes.md
+          fi
+          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          # The title is the tag and nothing else. The headline is in the body.
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body_path: ${{ steps.notes.outputs.notes_file }}
+          files: dist/*
+          fail_on_unmatched_files: true
