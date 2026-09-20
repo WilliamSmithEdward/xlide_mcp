@@ -36,7 +36,7 @@ diff rather than a feeling.
 
 ```json
 {
-  "contract_version": "0.1.0",
+  "contract_version": "1.0.2",
   "reference_implementation": "python",
   "digest": "sha256:...",
   "tool_count": 41,
