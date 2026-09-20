@@ -21,10 +21,10 @@ regenerated, and ports follow. A port that fixes something Python has wrong fixe
 it in Python too, or the fix is lost at the next sync.
 
 This is not a preference about languages. The Python server is a thin layer over
-pyOpenVBA, pyvbaanalysis and pyvbaharness, which is where the measured knowledge
-of the Office file formats actually lives. A port reimplements the *server*; it
-does not reimplement that knowledge, and it cannot be the place a format
-discovery lands.
+pyOpenVBA, pyOfficeEditor, pyvbaanalysis and pyvbaharness, which is where the
+measured knowledge of the Office file formats actually lives. A port reimplements
+the *server*; it does not reimplement that knowledge, and it cannot be the place
+a format discovery lands.
 
 ## What a port owes
 

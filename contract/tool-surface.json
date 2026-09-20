@@ -3,7 +3,8 @@
   "digest": "sha256:c3c6a9c47845878aef7a16a10e1c42fce969c709578b39bee345793e437e67f2",
   "generated_with": {
     "upstream": {
-      "pyOpenVBA": "5.2.4",
+      "pyOfficeEditor": "0.1.0",
+      "pyOpenVBA": "6.0.0",
       "pyvbaanalysis": "2.1.1",
       "pyvbaharness": "1.1.2"
     }

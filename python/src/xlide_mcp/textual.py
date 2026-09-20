@@ -140,11 +140,11 @@ def _sheet_inventory(path: Path, info: HostInfo) -> list[str]:
     """
     if not info.supports_sheets:
         return []
-    from .xlsx import Workbook, XlsxError
+    from . import cells
 
     try:
-        sheets = Workbook(path).sheets()
-    except (XlsxError, OSError):
+        sheets = cells.sheets(path)
+    except (cells.CellsError, OSError):
         return []
     width = max((len(sheet.name) for sheet in sheets), default=0)
     return [

@@ -11,9 +11,9 @@ and a port verified against a drifted contract is verified against nothing.
 tool without regenerating, and the build stops.
 
 The upstream versions recorded here are the point of the whole file. The Python
-implementation tracks pyOpenVBA, pyvbaanalysis and pyvbaharness; a port tracks the
-Python implementation. Stamping which upstream versions a contract reflects is
-what turns "we are behind" into a diff someone can act on.
+implementation tracks pyOpenVBA, pyOfficeEditor, pyvbaanalysis and pyvbaharness; a
+port tracks the Python implementation. Stamping which upstream versions a contract
+reflects is what turns "we are behind" into a diff someone can act on.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ CONTRACT_PATH = REPO_ROOT / "contract" / "tool-surface.json"
 # name is what actually answers.
 UPSTREAM = {
     "pyOpenVBA": "pyopenvba",
+    "pyOfficeEditor": "pyofficeeditor",
     "pyvbaanalysis": "pyvbaanalysis",
     "pyvbaharness": "pyvbaharness",
 }

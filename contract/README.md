@@ -20,6 +20,8 @@ The Python server is a thin layer over three libraries that do the hard part:
 
 - [pyOpenVBA](https://pypi.org/project/pyOpenVBA/) reads and writes the VBA, the
   UserForms and the Power Query inside Office files.
+- [pyOfficeEditor](https://pypi.org/project/pyOfficeEditor/) edits the document
+  around them: cells, formulas, formatting, tables, validation, rows and columns.
 - [pyvbaanalysis](https://pypi.org/project/pyvbaanalysis/) is the static analyzer.
 - [pyvbaharness](https://pypi.org/project/pyvbaharness/) runs VBA in a desktop
   application under a deadline.
@@ -40,7 +42,10 @@ diff rather than a feeling.
   "tool_count": 40,
   "tools": [ { "name": "...", "description": "...", "input_schema": {...}, "annotations": {...} } ],
   "generated_with": {
-    "upstream": { "pyOpenVBA": "5.2.4", "pyvbaanalysis": "2.1.1", "pyvbaharness": "1.1.2" }
+    "upstream": {
+      "pyOpenVBA": "5.2.4", "pyOfficeEditor": "0.1.1",
+      "pyvbaanalysis": "2.1.1", "pyvbaharness": "1.1.2"
+    }
   }
 }
 ```

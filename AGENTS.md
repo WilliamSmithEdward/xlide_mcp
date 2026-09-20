@@ -22,37 +22,47 @@ the diff under `contract/` is the work list for every port. A port that fixes
 something Python has wrong fixes it in Python too, or the fix is lost at the next
 sync.
 
-This is not a preference about languages. The server is a thin layer over three
+This is not a preference about languages. The server is a thin layer over four
 libraries that hold the measured knowledge of the Office file formats:
 
 | Library | What it knows |
 |---|---|
 | [pyOpenVBA](https://github.com/WilliamSmithEdward/pyOpenVBA) | How to read and write VBA, UserForm designs and Power Query inside the containers. |
+| [pyOfficeEditor](https://github.com/WilliamSmithEdward/pyOfficeEditor) | The document surface: cells, formulas, formatting, tables, validation, rows and columns. |
 | [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | 119 diagnostics, each measured against its host's object model. |
 | [pyVBAharness](https://github.com/WilliamSmithEdward/pyVBAharness) | How to run VBA in desktop Office without wedging on a dialog. |
+
+The split between the first two is the file itself: pyOpenVBA edits the VBA
+project, pyOfficeEditor edits the document it lives in.
 
 A port reimplements the *server*. It does not reimplement that knowledge, and it
 is never the place a format discovery lands: that belongs upstream, and reaches
 here through a version bump.
 
-### One debt against that rule
+### One debt against that rule, half paid
 
-`python/src/xlide_mcp/shapes.py` and `xlsx.py` hold format knowledge this server
-should not own: the worksheet grid, and the drawing layer where a button keeps
-the macro it runs. Both were ported from XLIDE because pyOpenVBA reached neither,
-and both are measured against what Excel actually writes.
+`shapes.py` and `xlsx.py` held format knowledge this server should not own: the
+worksheet grid, and the drawing layer where a button keeps the macro it runs.
+Both were ported from XLIDE because no library reached either.
 
-pyOpenVBA is taking on shapes. When that ships, `shapes.py` becomes a thin
-adapter over it rather than a second reader of the same bytes, and the same goes
-for the grid if pyOpenVBA ever covers it. The swap is provable rather than
-hopeful: the shape and cell conformance cases pin every answer those modules give,
-so an adapter that changes one fails.
+**The grid is done.** pyOfficeEditor covers it, so `cells.py` is a thin adapter
+over it and the tools read and write through that. The swap was provable rather
+than hopeful, which is the point of the corpus: every cell conformance case
+passed before and after, unchanged. What the adapter owns is translation, not
+format knowledge - an integer where the file stores a double, a leading `=` on a
+formula, a JSON-safe date - because those are answers the corpus pins.
+
+**Shapes are not.** `shapes.py` still reads the drawing layer itself, and still
+reaches into `xlsx.py` for the package surface underneath it: `part_text`,
+`set_part_text`, `part_relationships`, `sheets`. That is the only reason
+`xlsx.py` still exists. When `shapes.py` becomes a pyOpenVBA adapter, both go in
+one deletion rather than two risky trims.
 
 Until then, nothing new goes into either. Adding or deleting a shape means
 creating a drawing part, a content-type override and a relationship, and for a
 Forms control four parts that have to agree - exactly the knowledge that belongs
-upstream. It is deliberately not offered, and `xlide_set_shape_macro` covers what
-an agent is usually after: pointing a clickable thing at a Sub it just wrote.
+upstream. `xlide_set_shape_macro` covers what an agent is usually after: pointing
+a clickable thing at a Sub it just wrote.
 
 ## Layout
 
@@ -76,7 +86,8 @@ hosts.py          extension -> host, and what can be done with each
 project.py        the VBA project: modules, kinds, guarded saves
 tokens.py         content tokens, the guard on a stale write
 textual.py        the file as text: what a diff of it reads
-xlsx.py           worksheet cells, read and written in the OOXML package
+cells.py          worksheet cells, through pyOfficeEditor
+xlsx.py           the OOXML package surface the drawing layer still needs
 grid.py           the same, through Excel, for the formats that are not OOXML
 shapes.py         the drawing layer: buttons, shapes, and the macros they run
 vb6.py            a .vbp read as a project, through the same surface

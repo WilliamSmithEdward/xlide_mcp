@@ -47,6 +47,10 @@ classifiers = [
 dependencies = [
     "mcp>=2.0",
     "pyOpenVBA>=5.2",
+    # Held below 0.2 on purpose. It is pre-1.0, so a minor may move the API, and
+    # this pin states what the conformance corpus has actually been run against.
+    # Raising it is the documented sync step: bump, run the suite, fix, regenerate.
+    "pyOfficeEditor>=0.1.1,<0.2",
     "pyvbaanalysis>=1.2",
 ]
 

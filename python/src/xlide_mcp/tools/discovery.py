@@ -310,16 +310,15 @@ def _query_summary(path: Path) -> dict[str, Any]:
 
 
 def _sheet_summary(path: Path) -> dict[str, Any]:
-    from ..xlsx import Workbook, XlsxError
+    from .. import cells
 
     try:
-        book = Workbook(path)
         sheets = [
             {"name": s.name, "used_range": s.used_range or "(empty)", "hidden": s.hidden}
-            for s in book.sheets()
+            for s in cells.sheets(path)
         ]
-        named = [{"name": n.name, "refers_to": n.refers_to} for n in book.named_ranges()]
-    except XlsxError as exc:
+        named = [{"name": n.name, "refers_to": n.refers_to} for n in cells.named_ranges(path)]
+    except cells.CellsError as exc:
         return {"sheets_note": str(exc)}
     out: dict[str, Any] = {"sheets": sheets}
     if named:

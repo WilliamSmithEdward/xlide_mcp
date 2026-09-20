@@ -16,12 +16,11 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
-from .. import grid
+from .. import cells, grid
 from ..config import Settings, clamp_timeout
 from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
-from ..xlsx import MAX_CELLS_PER_READ, CellRange, Workbook, parse_cell_ref
 from ._common import bound, read_only, writes
 
 
@@ -47,7 +46,6 @@ def register(server: MCPServer, settings: Settings) -> None:
         path, info = _any_excel(file_path, settings)
         if not info.supports_sheets:
             return _through_excel_sheets(path, info, clamp_timeout(timeout or None, settings))
-        book = Workbook(path)
         return {
             "path": str(path),
             "source": "file",
@@ -57,10 +55,10 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "used_range": sheet.used_range or "(empty)",
                     "hidden": sheet.hidden,
                 }
-                for sheet in book.sheets()
+                for sheet in cells.sheets(path)
             ],
             "named_ranges": [
-                {"name": n.name, "refers_to": n.refers_to} for n in book.named_ranges()
+                {"name": n.name, "refers_to": n.refers_to} for n in cells.named_ranges(path)
             ],
         }
 
@@ -104,22 +102,21 @@ def register(server: MCPServer, settings: Settings) -> None:
                 clamp_timeout(timeout or None, settings),
             )
 
-        book = Workbook(path)
-        area, grid = book.read(sheet, cell_range)
+        block = cells.read(path, sheet, cell_range)
         result: dict[str, Any] = {
             "path": str(path),
-            "sheet": book.canonical_sheet_name(sheet),
+            "sheet": block.sheet,
             "source": "file",
             "recalculated": False,
-            "range": str(area),
-            "rows": area.last_row - area.first_row + 1,
-            "columns": area.last_column - area.first_column + 1,
+            "range": block.reference,
+            "rows": block.rows,
+            "columns": block.columns,
         }
         if wanted in {"values", "both"}:
-            result["values"] = [[cell.value for cell in row] for row in grid]
+            result["values"] = block.values
         if wanted in {"formulas", "both"}:
-            result["formulas"] = [[cell.formula for cell in row] for row in grid]
-        formula_count = sum(1 for row in grid for cell in row if cell.formula)
+            result["formulas"] = block.formulas
+        formula_count = block.formula_count
         if formula_count and wanted != "formulas":
             result["note"] = (
                 f"{formula_count} of these cells hold formulas. The values are what Excel last "
@@ -268,37 +265,15 @@ def register(server: MCPServer, settings: Settings) -> None:
                 clamp_timeout(timeout or None, settings),
             )
 
-        book = Workbook(path)
-        sheet_name = book.canonical_sheet_name(sheet)
-        # What the block held before, so the answer can say what was displaced.
-        # The user gets told they overwrote data by the agent, not by the workbook.
-        first_row, first_column = parse_cell_ref(start_cell)
-        target = CellRange(
-            first_row,
-            first_column,
-            first_row + len(data) - 1,
-            first_column + max((len(row) for row in data), default=1) - 1,
-        )
-        replaced_values = replaced_formulas = 0
-        if target.cell_count <= MAX_CELLS_PER_READ:
-            _, before_grid = book.read(sheet_name, str(target))
-            for row in before_grid:
-                for cell in row:
-                    if cell.formula is not None:
-                        replaced_formulas += 1
-                    elif cell.value is not None:
-                        replaced_values += 1
-
-        written, count = book.write(sheet_name, start_cell, data)
-        book.save()
+        written = cells.write(path, sheet, start_cell, data)
         result: dict[str, Any] = {
             "path": str(path),
-            "sheet": sheet_name,
-            "range": str(written),
-            "cells_written": count,
+            "sheet": written.sheet,
+            "range": written.reference,
+            "cells_written": written.cells_written,
             "source": "file",
-            "cells_overwritten": replaced_values + replaced_formulas,
-            "formulas_replaced": replaced_formulas,
+            "cells_overwritten": written.cells_overwritten,
+            "formulas_replaced": written.formulas_replaced,
             "saved": True,
             "recalculated": False,
             "note": (
@@ -306,10 +281,10 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "it opens it; until then, do not report a computed result as current."
             ),
         }
-        if replaced_values or replaced_formulas:
+        if written.cells_overwritten:
             result["warning"] = (
-                f"{replaced_values + replaced_formulas} cells already held content and were "
-                f"overwritten, {replaced_formulas} of them formulas. Tell the user."
+                f"{written.cells_overwritten} cells already held content and were "
+                f"overwritten, {written.formulas_replaced} of them formulas. Tell the user."
             )
         return result
 
@@ -334,12 +309,6 @@ def _any_excel(raw: str, settings: Settings) -> tuple[Path, Any]:
             f"{path.name} is a {info.title} file. Worksheet cells exist in Excel files only."
         )
     return path, info
-    if not info.supports_sheets:
-        raise ToolError(
-            f"Worksheet cells are read from the OOXML package, which {info.extension} is not. "
-            "Supported: .xlsx, .xlsm and .xlam. The VBA project in this file is still readable."
-        )
-    return path
 
 
 # --------------------------------------------------- the formats Excel opens
