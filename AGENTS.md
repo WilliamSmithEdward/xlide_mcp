@@ -1,8 +1,8 @@
 # Working on xlide_mcp
 
-An MCP server for the code inside Office files: the VBA, the UserForms, the Power
-Query and the worksheet cells in Excel, Word, PowerPoint and Access documents,
-plus Visual Basic 6 projects.
+An MCP server for the inside of an Office file: the VBA in Excel, Word,
+PowerPoint and Access, and the document around it. Visual Basic 6 projects open
+the same way.
 [README.md](README.md) says what it does. This says how to change it.
 
 Adopt these first:
@@ -100,6 +100,9 @@ tools/
   forms.py        UserForm and Access designs
   powerquery.py   the M code beside the VBA
   sheets.py       cells, formulas, and the shapes on a sheet
+  formatting.py   how a range looks: fonts, fills, borders, merging
+  structure.py    sheets, and the rows and columns in them
+  features.py     tables, names, validation, rules, links, page setup
   sync.py         export and import .bas/.cls, previewed
   vcs.py          what changed inside the file since a git revision
   execution.py    macros, tests and compile checks in real Office

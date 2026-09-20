@@ -113,6 +113,35 @@ def test_every_relative_link_points_at_something_that_exists() -> None:
             )
 
 
+def test_every_source_module_is_in_the_map() -> None:
+    """AGENTS.md carries a map of the source tree, and a map is only useful if
+    it is complete.
+
+    It went stale the first time it was tested: three tool modules from the
+    document surface were added, registered and documented in both READMEs, and
+    the map in AGENTS.md still listed the eleven that came before them. The
+    READMEs were caught by the tool-name check above; nothing was watching the
+    map, so this does.
+    """
+    source = REPO_ROOT / "python" / "src" / "xlide_mcp"
+    agents = _read("AGENTS.md")
+
+    modules = {
+        path.name
+        for folder in (source, source / "tools")
+        for path in folder.glob("*.py")
+        if not path.name.startswith("_")
+    }
+
+    missing = [name for name in sorted(modules) if name not in agents]
+    assert not missing, (
+        "AGENTS.md's source map does not mention "
+        + ", ".join(missing)
+        + ". A map that omits a module sends the next reader looking in the "
+        "wrong place."
+    )
+
+
 def test_the_registry_entry_agrees_with_the_package() -> None:
     """`server.json` is what the MCP registry publishes, and three of its fields
     restate something the package already says.

@@ -52,7 +52,7 @@ in, which is usually worse than the thing being unavailable.
 
 | Layer | Tools | Needs |
 |---|---|---|
-| Files | discovery, modules, analysis, catalog, forms, Power Query, sheets, shapes, sync, git changes | Nothing. Any platform, git on the PATH for `xlide_git_changes`. |
+| Files | The code project: discovery, modules, analysis, catalog, forms, sync, git changes. The document around it: Power Query, sheets, formatting, structure, tables and names, rules and links, shapes. | Nothing. Any platform, git on the PATH for `xlide_git_changes`. |
 | Execution | `xlide_run_macro`, `xlide_run_vba`, `xlide_run_tests`, `xlide_compile_check` | Windows, desktop Office. |
 | Live | `xlide_live_*` | A running `xlide_vbide` session. |
 
