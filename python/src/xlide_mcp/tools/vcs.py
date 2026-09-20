@@ -1,13 +1,15 @@
 """What changed inside an Office file since a git revision.
 
-`git diff` cannot answer this. An Office file is one binary blob to git, so a
-commit that changed three lines of VBA and a commit that replaced the whole
-project look identical in a diff and in a review. The code is in there, and it is
-readable: this extracts the blob at a revision, opens both versions' VBA projects,
-and diffs them module by module.
+`git diff` cannot answer this on its own. An Office file is one binary blob to
+git, so a commit that changed three lines of VBA and a commit that replaced the
+whole project look identical in a diff and in a review. The code is in there, and
+it is readable: this extracts the blob at a revision, renders both versions
+through `textual`, and diffs them section by section.
 
 That makes it the tool to call before committing, and the one that makes a code
-review of a workbook possible at all.
+review of a workbook possible at all. For the same thing in git's own diff, so
+that `git diff` and a side-by-side view show it too, `xlide-mcp --textconv` is a
+textconv driver built on the same renderer.
 
 It shells out to git rather than binding a library. The repository the user works
 in is the one git already knows about, with their config, their worktree layout
@@ -17,7 +19,6 @@ of answers.
 
 from __future__ import annotations
 
-import difflib
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -27,18 +28,15 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
-from .. import project as project_layer
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import resolve_path
-from ._common import MAX_ITEMS, bound, read_only, truncate
+from ..textual import COVERAGE, Section, sections
+from ._common import MAX_ITEMS, bound, read_only, unified_diff
 
 # A git call that has not answered by now is a repository problem, not slow work.
 GIT_TIMEOUT = 30.0
-
-# A diff longer than this is not one an agent reads; it is one it summarizes.
-MAX_DIFF_LINES = 400
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -47,12 +45,13 @@ def register(server: MCPServer, settings: Settings) -> None:
         title="What changed inside the file",
         annotations=read_only("What changed inside the file"),
         description=(
-            "Lists what changed in an Office file's VBA since a git revision, one entry per "
-            "module, with a unified diff. git diff cannot show this: the file is binary, so a "
-            "commit that changed one line and one that replaced the whole project look the "
-            "same. Call this before committing, and to review what an agent or a colleague "
-            "changed. Defaults to HEAD; pass any revision git understands. Needs the file to "
-            "be inside a git repository and tracked in that revision."
+            "Lists what changed inside an Office file since a git revision, one entry per VBA "
+            "module and Power Query, with a unified diff. git diff cannot show this: the file "
+            "is binary, so a commit that changed one line and one that replaced the whole "
+            "project look the same. Call this before committing, and to review what an agent "
+            "or a colleague changed. Worksheet cell values are not compared. Defaults to HEAD; "
+            "pass any revision git understands. Needs the file to be inside a git repository "
+            "and tracked in that revision."
         ),
     )
     def git_changes(
@@ -64,9 +63,15 @@ def register(server: MCPServer, settings: Settings) -> None:
                 description="Any revision git understands: HEAD, a branch, a tag, a SHA.",
             ),
         ] = "HEAD",
-        module_name: Annotated[
+        section: Annotated[
             str,
-            Field(default="", description="Only this module. Empty reports every one."),
+            Field(
+                default="",
+                description=(
+                    "Only this one, named as a module or a query is named. "
+                    "Empty reports every one."
+                ),
+            ),
         ] = "",
         include_diff: Annotated[
             bool,
@@ -90,114 +95,124 @@ def register(server: MCPServer, settings: Settings) -> None:
         relative = _relative_to_repository(path, repository)
         blob = _blob_at(repository, revision, relative, path.name)
 
-        with project_layer.open_project(path, info) as handle:
-            current = {m.name: m for m in project_layer.read_modules(handle, info)}
+        current = _by_key(sections(path, info))
+        with _temporary_copy(blob, path.suffix) as older_path:
+            previous = _by_key(sections(older_path, info))
 
-        with (
-            _temporary_copy(blob, path.suffix) as older_path,
-            project_layer.open_project(older_path, info) as handle,
-        ):
-            previous = {m.name: m for m in project_layer.read_modules(handle, info)}
-
-        wanted = module_name.strip().casefold()
+        wanted = section.strip().casefold()
         entries: list[dict[str, Any]] = []
-        for name in sorted(set(current) | set(previous), key=str.casefold):
-            if wanted and name.casefold() != wanted:
+        for key in sorted(set(current) | set(previous)):
+            before = previous.get(key)
+            after = current.get(key)
+            present = after or before
+            assert present is not None
+            if wanted and present.name.casefold() != wanted:
                 continue
-            before = previous.get(name)
-            after = current.get(name)
-            entry = _entry(name, before, after, include_diff)
-            entries.append(entry)
+            entries.append(_entry(present, before, after, include_diff))
+
+        if wanted and not entries:
+            raise ToolError(
+                f"Nothing named {section!r} in either version. Now: "
+                + (_inventory(current.values()) or "(nothing)")
+            )
 
         changed = [e for e in entries if e["status"] != "unchanged"]
-        # What a reviewer came for is what changed, so the unchanged modules are
+        # What a reviewer came for is what changed, so the unchanged sections are
         # the ones dropped when a project is too big to report whole.
-        reportable = changed if len(entries) > MAX_ITEMS["modules"] else entries
+        crowded = len(entries) > MAX_ITEMS["modules"]
         shown, note = bound(
-            reportable, "modules", "Ask for one module with module_name."
+            changed if crowded else entries, "modules", "Ask for one with section."
         )
         result: dict[str, Any] = {
             "path": str(path),
             "repository": str(repository),
             "revision": revision,
-            "modules_changed": len(changed),
-            "modules": shown,
-            "verdict": "no VBA changes" if not changed else f"{len(changed)} modules changed",
+            "changed": len(changed),
+            "changes": shown,
+            "verdict": "no changes" if not changed else f"{len(changed)} changed",
+            "covers": COVERAGE,
         }
-        if len(entries) > MAX_ITEMS["modules"]:
+        if crowded:
             result["note"] = (
-                f"{len(entries)} modules in the project; only the ones that changed are "
+                f"{len(entries)} sections in this file; only the ones that changed are "
                 "listed. " + note
             ).strip()
         elif note:
             result["note"] = note
-        if wanted and not entries:
-            raise ToolError(
-                f"No module named {module_name!r} in either version. Modules now: "
-                + (", ".join(sorted(current)) or "(none)")
-            )
         return result
 
 
+def _by_key(found: list[Section]) -> dict[tuple[str, str], Section]:
+    """Sections by kind and folded name, so the two revisions line up.
+
+    Folded, because a rename that only changes case is a rename in neither VBA nor
+    Power Query, and reporting it as one section added and another removed would
+    send a reviewer looking for a change nobody made.
+    """
+    return {(section.kind, section.name.casefold()): section for section in found}
+
+
 @dataclass(frozen=True)
-class _Diff:
+class _Change:
     status: str
     text: str
+    truncated: bool
     added: int
     removed: int
 
 
-def _entry(name: str, before: Any, after: Any, include_diff: bool) -> dict[str, Any]:
-    if before is None:
-        diff = _diff("", after.body, name, "added")
-    elif after is None:
-        diff = _diff(before.body, "", name, "removed")
-    elif _same(before.body, after.body):
-        diff = _Diff("unchanged", "", 0, 0)
-    else:
-        diff = _diff(before.body, after.body, name, "modified")
-
+def _entry(
+    present: Section, before: Section | None, after: Section | None, include_diff: bool
+) -> dict[str, Any]:
+    change = _change(present, before, after)
     entry: dict[str, Any] = {
-        "module": name,
-        "status": diff.status,
-        "lines_added": diff.added,
-        "lines_removed": diff.removed,
+        "name": present.name,
+        "kind": present.kind,
+        "status": change.status,
+        "lines_added": change.added,
+        "lines_removed": change.removed,
     }
-    if include_diff and diff.text:
-        text, was_cut = truncate(
-            diff.text, hint="Ask for one module, or set include_diff false."
-        )
-        entry["diff"] = text
-        if was_cut:
+    if include_diff and change.text:
+        entry["diff"] = change.text
+        if change.truncated:
             entry["diff_truncated"] = True
     return entry
 
 
-def _diff(before: str, after: str, name: str, status: str) -> _Diff:
-    before_lines = before.replace("\r\n", "\n").splitlines()
-    after_lines = after.replace("\r\n", "\n").splitlines()
-    lines = list(
-        difflib.unified_diff(
-            before_lines,
-            after_lines,
-            fromfile=f"{name} (at the revision)",
-            tofile=f"{name} (now)",
-            lineterm="",
-            n=3,
-        )
+def _change(present: Section, before: Section | None, after: Section | None) -> _Change:
+    old = before.source if before is not None else ""
+    new = after.source if after is not None else ""
+    if before is None:
+        status = "added"
+    elif after is None:
+        status = "removed"
+    elif _same(old, new):
+        return _Change("unchanged", "", False, 0, 0)
+    else:
+        status = "modified"
+
+    label = f"{present.kind} {present.name}"
+    text, truncated = unified_diff(
+        old,
+        new,
+        label=label,
+        from_label="at the revision",
+        to_label="now",
+        narrower="Ask for this one on its own.",
     )
+    lines = text.splitlines()
     added = sum(1 for line in lines if line.startswith("+") and not line.startswith("+++"))
     removed = sum(1 for line in lines if line.startswith("-") and not line.startswith("---"))
-    if len(lines) > MAX_DIFF_LINES:
-        withheld = len(lines) - MAX_DIFF_LINES
-        lines = lines[:MAX_DIFF_LINES]
-        lines.append(f"... {withheld} more diff lines. Ask for this module on its own.")
-    return _Diff(status=status, text="\n".join(lines), added=added, removed=removed)
+    return _Change(status, text, truncated, added, removed)
 
 
 def _same(left: str, right: str) -> bool:
     """Line-ending style is not somebody's edit."""
     return left.replace("\r\n", "\n").rstrip() == right.replace("\r\n", "\n").rstrip()
+
+
+def _inventory(found: Any) -> str:
+    return ", ".join(sorted(f"{s.name} ({s.kind})" for s in found))
 
 
 # ------------------------------------------------------------------- the repo

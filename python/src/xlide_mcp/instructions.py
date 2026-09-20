@@ -53,6 +53,10 @@ instance this server owns and holds a deadline over.
 overwriting cells that hold data, or writing to a project that is password-protected or \
 digitally signed. A signed project loses its signature on any macro change.
 - Keep VBA source ASCII unless the user asks otherwise.
+- To show the user what you changed, use the diff a write returns: it is taken from \
+the file read back after saving, so it is what the file now holds rather than what you \
+meant to write. xlide_git_changes does the same against a git revision, and covers \
+Power Query as well as VBA. Neither compares cell values.
 - A write fails while the file is open in its Office application. Tell the user; do not \
 close the application for them.
 - Access runs its compiled project, so a module written here takes effect when Access \

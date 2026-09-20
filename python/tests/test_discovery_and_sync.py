@@ -233,6 +233,45 @@ def test_power_query_read_and_write(call: Callable[..., Any], plain_workbook: Pa
     assert [q["name"] for q in remaining] == ["Numbers"]
 
 
+def test_setting_a_query_reports_the_m_that_changed(
+    call: Callable[..., Any], plain_workbook: Path
+) -> None:
+    """M is code the same way VBA is, so a change to it gets the same diff. A
+    workbook's logic can move entirely in here with no module touched."""
+    written = call(
+        "xlide_write_query",
+        file_path=str(plain_workbook),
+        action="set",
+        query_name="Numbers",
+        formula="let Source = {1..99} in Source",
+    )
+    assert "-let Source = {1..10} in Source" in written["diff"]
+    assert "+let Source = {1..99} in Source" in written["diff"]
+
+    quiet = call(
+        "xlide_write_query",
+        file_path=str(plain_workbook),
+        action="set",
+        query_name="Numbers",
+        formula="let Source = {1..5} in Source",
+        include_diff=False,
+    )
+    assert "diff" not in quiet
+
+
+def test_an_action_with_nothing_to_diff_reports_no_diff(
+    call: Callable[..., Any], plain_workbook: Path
+) -> None:
+    renamed = call(
+        "xlide_write_query",
+        file_path=str(plain_workbook),
+        action="rename",
+        query_name="Numbers",
+        new_name="Digits",
+    )
+    assert "diff" not in renamed
+
+
 def test_power_query_is_refused_on_a_word_file(
     call: Callable[..., Any], workspace: Path
 ) -> None:

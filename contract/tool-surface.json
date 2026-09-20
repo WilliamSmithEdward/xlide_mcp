@@ -1,6 +1,6 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:fe87f914e2ed6fd7fbd9f386d54fc7abd76ac2f9dd2da429902fbf5974834113",
+  "digest": "sha256:c3c6a9c47845878aef7a16a10e1c42fce969c709578b39bee345793e437e67f2",
   "generated_with": {
     "upstream": {
       "pyOpenVBA": "5.2.4",
@@ -10,7 +10,7 @@
   },
   "reference_implementation": "python",
   "server": {
-    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
+    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
   "tool_count": 40,
@@ -414,7 +414,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists what changed in an Office file's VBA since a git revision, one entry per module, with a unified diff. git diff cannot show this: the file is binary, so a commit that changed one line and one that replaced the whole project look the same. Call this before committing, and to review what an agent or a colleague changed. Defaults to HEAD; pass any revision git understands. Needs the file to be inside a git repository and tracked in that revision.",
+      "description": "Lists what changed inside an Office file since a git revision, one entry per VBA module and Power Query, with a unified diff. git diff cannot show this: the file is binary, so a commit that changed one line and one that replaced the whole project look the same. Call this before committing, and to review what an agent or a colleague changed. Worksheet cell values are not compared. Defaults to HEAD; pass any revision git understands. Needs the file to be inside a git repository and tracked in that revision.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -428,16 +428,16 @@
             "title": "Include Diff",
             "type": "boolean"
           },
-          "module_name": {
-            "default": "",
-            "description": "Only this module. Empty reports every one.",
-            "title": "Module Name",
-            "type": "string"
-          },
           "revision": {
             "default": "HEAD",
             "description": "Any revision git understands: HEAD, a branch, a tag, a SHA.",
             "title": "Revision",
+            "type": "string"
+          },
+          "section": {
+            "default": "",
+            "description": "Only this one, named as a module or a query is named. Empty reports every one.",
+            "title": "Section",
             "type": "string"
           }
         },
@@ -1509,7 +1509,7 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "The canonical way to change VBA. Writes a module's source into the Office file and saves it. It replaces the module's whole source, so send all of it; send the body only, because the attribute header is managed for you. A module that does not exist is created: standard by default, or a class with kind='class'. Pass expected_content_token from your read and the write is refused if the module changed since. After writing, call xlide_analyze and treat any error as a build failure. Ask the user first when the project is protected or signed.",
+      "description": "The canonical way to change VBA. Writes a module's source into the Office file and saves it. It replaces the module's whole source, so send all of it; send the body only, because the attribute header is managed for you. A module that does not exist is created: standard by default, or a class with kind='class'. Pass expected_content_token from your read and the write is refused if the module changed since. The result carries a diff of what the file now holds, read back after saving, which is what to show the user when they ask what changed. After writing, call xlide_analyze and treat any error as a build failure. Ask the user first when the project is protected or signed.",
       "input_schema": {
         "properties": {
           "allow_invalidate_signature": {
@@ -1534,6 +1534,12 @@
             "description": "Absolute path to the Office file.",
             "title": "File Path",
             "type": "string"
+          },
+          "include_diff": {
+            "default": true,
+            "description": "Include a unified diff of what changed. Off in a loop that writes many modules and reads none of them back.",
+            "title": "Include Diff",
+            "type": "boolean"
           },
           "kind": {
             "default": "standard",
@@ -1621,6 +1627,12 @@
             "description": "For set on a new query: the folder in the Queries pane.",
             "title": "Group",
             "type": "string"
+          },
+          "include_diff": {
+            "default": true,
+            "description": "For set: include a unified diff of the M that changed. Nothing to diff for the other actions.",
+            "title": "Include Diff",
+            "type": "boolean"
           },
           "new_name": {
             "default": "",

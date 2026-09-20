@@ -111,6 +111,39 @@ the Visual Basic Editor.
 A recognized extension outside those sets is listed with the reason it cannot be
 opened, rather than left silently out of a listing.
 
+## Seeing what changed
+
+An Office file is one binary blob to git, so a commit that changed a line of VBA
+and one that replaced the whole project are the same three words: `Binary files
+differ`.
+
+`xlide_git_changes` reports what changed since any revision, one entry per module
+and query, each with a unified diff. `xlide-mcp --textconv` is a git textconv
+driver that does the same for git itself:
+
+```bash
+echo '*.xlsm binary diff=vba' >> .gitattributes
+git config diff.vba.textconv "xlide-mcp --textconv"
+git config diff.vba.cachetextconv true
+```
+
+```diff
+ Public Sub Greet()
+-    MsgBox "hello"
++    MsgBox "hello, world"
++    Debug.Print Now
+ End Sub
+```
+
+That is `git diff` on a `.xlsm`, and `git show` and `git log -p` convert too.
+Write `binary diff=vba`, not `diff=vba` alone: the `binary` macro is
+`-diff -merge -text` and the later `diff=vba` overrides only its `-diff`, so the
+file keeps `-text` and git never applies end-of-line conversion to a container it
+would corrupt.
+
+Both routes cover VBA, Power Query and the sheet inventory. Cell values are not
+included, and the rendered text says so on its first line.
+
 ## The rules it works by
 
 These are in the server's own instructions, so every agent that connects reads

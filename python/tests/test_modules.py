@@ -78,6 +78,56 @@ def test_write_module_round_trip(call: Callable[..., Any], workbook: Path) -> No
     assert again["content_token"] == written["content_token"]
 
 
+def test_a_write_reports_the_diff_of_what_landed(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    """Against the read-back, not against what was sent. That is the difference
+    between reporting the edit and reporting what the file now holds."""
+    read = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
+    written = call(
+        "xlide_write_module",
+        file_path=str(workbook),
+        module_name="Helpers",
+        source=read["source"].replace("a + b", "a + b + 0"),
+        expected_content_token=read["content_token"],
+    )
+
+    assert "-    AddNums = a + b" in written["diff"]
+    assert "+    AddNums = a + b + 0" in written["diff"]
+    assert written["lines_added"] == 1
+    assert written["lines_removed"] == 1
+
+
+def test_a_created_module_diffs_against_nothing(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    written = call(
+        "xlide_write_module",
+        file_path=str(workbook),
+        module_name="Fresh",
+        source="Option Explicit\r\n\r\nPublic Sub Go()\r\nEnd Sub\r\n",
+    )
+    assert written["created"] is True
+    assert "+Public Sub Go()" in written["diff"]
+    assert written["lines_removed"] == 0
+
+
+def test_the_write_diff_can_be_turned_off(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    read = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
+    written = call(
+        "xlide_write_module",
+        file_path=str(workbook),
+        module_name="Helpers",
+        source=read["source"].replace("a + b", "a - b"),
+        expected_content_token=read["content_token"],
+        include_diff=False,
+    )
+    assert "diff" not in written
+    assert written["lines_added"] == 1
+
+
 def test_stale_token_refuses_the_write(call: Callable[..., Any], workbook: Path) -> None:
     read = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
     call(

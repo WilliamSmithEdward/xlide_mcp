@@ -75,6 +75,7 @@ paths.py          resolving a caller's path, or refusing it with the reason
 hosts.py          extension -> host, and what can be done with each
 project.py        the VBA project: modules, kinds, guarded saves
 tokens.py         content tokens, the guard on a stale write
+textual.py        the file as text: what a diff of it reads
 xlsx.py           worksheet cells, read and written in the OOXML package
 grid.py           the same, through Excel, for the formats that are not OOXML
 shapes.py         the drawing layer: buttons, shapes, and the macros they run
@@ -141,7 +142,7 @@ Rules the surface holds to, each of which has a conformance case behind it:
   implementation that reported a computed value it did not compute would be
   lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 17 of the 65 conformance cases
+A refusal is as much of the contract as a success: 17 of the 68 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

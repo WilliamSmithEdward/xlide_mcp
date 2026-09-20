@@ -24,7 +24,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
-from ._common import bound, read_only, truncate, writes
+from ._common import bound, change_summary, read_only, truncate, unified_diff, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -179,6 +179,16 @@ def register(server: MCPServer, settings: Settings) -> None:
         cell: Annotated[
             str, Field(default="A1", description="For load: the table's top-left cell.")
         ] = "A1",
+        include_diff: Annotated[
+            bool,
+            Field(
+                default=True,
+                description=(
+                    "For set: include a unified diff of the M that changed. Nothing to "
+                    "diff for the other actions."
+                ),
+            ),
+        ] = True,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_write_query")
         path = _query_path(file_path, settings)
@@ -199,16 +209,21 @@ def register(server: MCPServer, settings: Settings) -> None:
                         raise ToolError("formula is required for action='set'.")
                     if query_name.casefold() in existing:
                         query = _find_query(book, query_name)
+                        was = query.formula or ""
                         query.formula = formula
                         if description:
                             query.description = description
                         detail = {"query": query.name, "created": False}
+                        if include_diff:
+                            detail.update(_diff_detail(was, formula, query.name))
                     else:
                         target_group = _resolve_group(book, group)
                         query = book.add_query(query_name, formula, group=target_group)
                         if description:
                             query.description = description
                         detail = {"query": query_name, "created": True}
+                        if include_diff:
+                            detail.update(_diff_detail("", formula, query_name))
                 elif wanted == "rename":
                     if not new_name.strip():
                         raise ToolError("new_name is required for action='rename'.")
@@ -268,6 +283,17 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "change when Excel next refreshes it."
             ),
         }
+
+
+def _diff_detail(before: str, after: str, name: str) -> dict[str, Any]:
+    """What a set changed, in the shape every other diff in this server has."""
+    diff, was_cut = unified_diff(
+        before, after, label=f"query {name}", narrower="Read it with xlide_read_query."
+    )
+    detail: dict[str, Any] = {**change_summary(before, after), "diff": diff}
+    if was_cut:
+        detail["diff_truncated"] = True
+    return detail
 
 
 def _query_path(raw: str, settings: Settings) -> Path:

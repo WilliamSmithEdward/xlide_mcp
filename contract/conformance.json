@@ -183,7 +183,7 @@
       ]
     }
   },
-  "case_count": 65,
+  "case_count": 68,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -392,6 +392,40 @@
         {
           "path": "content_token",
           "equals": "${step[1].content_token}"
+        }
+      ]
+    },
+    {
+      "id": "write-module.reports-the-diff-of-what-landed",
+      "why": "The diff is taken against the module read back after saving, not against the source that was sent. That is what makes it evidence rather than an echo: a container that stored something other than what it was given shows here.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b + 1\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "diff",
+          "contains": "-    AddNums = a + b"
+        },
+        {
+          "path": "diff",
+          "contains": "+    AddNums = a + b + 1"
+        },
+        {
+          "path": "lines_added",
+          "equals": 1
+        },
+        {
+          "path": "lines_removed",
+          "equals": 1
         }
       ]
     },
@@ -1788,16 +1822,77 @@
       "fixture": "committed_workbook",
       "expect": [
         {
-          "path": "modules_changed",
+          "path": "changed",
           "equals": 1
         },
         {
-          "path": "modules",
+          "path": "changes",
           "contains": "\"status\": \"modified\""
         },
         {
-          "path": "modules",
+          "path": "changes",
+          "contains": "\"kind\": \"module\""
+        },
+        {
+          "path": "changes",
           "contains": "AddNums = a + b + 1"
+        }
+      ]
+    },
+    {
+      "id": "git-changes.reports-a-power-query-change-too",
+      "why": "A workbook's logic can move entirely in its M with no module touched. A comparison that only looked at VBA would call that commit empty, which is a wrong answer rather than a missing one.",
+      "requires": "git",
+      "steps": [
+        {
+          "tool": "xlide_write_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "set",
+            "query_name": "Orders",
+            "formula": "let Source = {1..10} in Source"
+          }
+        },
+        {
+          "tool": "xlide_git_changes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "committed_workbook",
+      "expect": [
+        {
+          "path": "changed",
+          "equals": 1
+        },
+        {
+          "path": "changes",
+          "contains": "\"kind\": \"query\""
+        },
+        {
+          "path": "changes",
+          "contains": "let Source = {1..10} in Source"
+        }
+      ]
+    },
+    {
+      "id": "git-changes.says-what-it-does-not-compare",
+      "why": "Cell values are not compared, and a reviewer who does not know that reads an empty report as an unchanged workbook. The scope travels with every answer rather than living in the documentation.",
+      "requires": "git",
+      "steps": [
+        {
+          "tool": "xlide_git_changes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "committed_workbook",
+      "expect": [
+        {
+          "path": "covers",
+          "contains": "cell values are not compared"
         }
       ]
     },
@@ -1816,12 +1911,12 @@
       "fixture": "committed_workbook",
       "expect": [
         {
-          "path": "modules_changed",
+          "path": "changed",
           "equals": 0
         },
         {
           "path": "verdict",
-          "equals": "no VBA changes"
+          "equals": "no changes"
         }
       ]
     },

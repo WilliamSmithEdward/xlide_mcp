@@ -147,6 +147,68 @@ def host_info(path: str | Path) -> HostInfo:
     )
 
 
+# The OPC part that only one application puts in its package, and the CFB stream
+# that only one application puts at the root. Enough to tell an Excel container
+# from a Word one without opening either as a document.
+_OOXML_MARKERS: tuple[tuple[str, str], ...] = (
+    ("xl/", ".xlsm"),
+    ("word/", ".docm"),
+    ("ppt/", ".pptm"),
+)
+_CFB_MARKERS: tuple[tuple[str, str], ...] = (
+    ("Workbook", ".xls"),
+    ("Book", ".xls"),
+    ("WordDocument", ".doc"),
+    ("PowerPoint Document", ".pptm"),
+)
+_JET_MARKERS: tuple[bytes, ...] = (b"Standard Jet DB", b"Standard ACE DB")
+
+
+def sniff_extension(path: str | Path) -> str | None:
+    """The extension this file would have, read from its bytes.
+
+    Needed because git hands a textconv driver a temporary file with no useful
+    name, and every reader here is chosen by extension. Returns None for anything
+    it does not recognize; a guess would open the wrong reader and blame the file.
+    """
+    target = Path(path)
+    try:
+        with target.open("rb") as handle:
+            head = handle.read(32)
+    except OSError:
+        return None
+
+    if head[:4] == b"PK\x03\x04":
+        import zipfile
+
+        try:
+            with zipfile.ZipFile(target) as archive:
+                names = archive.namelist()
+        except (zipfile.BadZipFile, OSError):
+            return None
+        for prefix, extension in _OOXML_MARKERS:
+            if any(name.startswith(prefix) for name in names):
+                return extension
+        return None
+
+    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        import pyopenvba
+
+        try:
+            with target.open("rb") as handle:
+                streams = set(pyopenvba.cfb.CFB.from_file(handle).list_streams())
+        except Exception:
+            return None
+        for stream, extension in _CFB_MARKERS:
+            if stream in streams:
+                return extension
+        return None
+
+    if any(marker in head for marker in _JET_MARKERS):
+        return ".accdb"
+    return None
+
+
 def require_readable(path: str | Path) -> HostInfo:
     """Classify, and refuse anything whose VBA project cannot be opened."""
     info = host_info(path)

@@ -490,6 +490,31 @@ def cases() -> list[dict[str, Any]]:
     )
     out.append(
         case(
+            "write-module.reports-the-diff-of-what-landed",
+            "The diff is taken against the module read back after saving, not against the "
+            "source that was sent. That is what makes it evidence rather than an echo: a "
+            "container that stored something other than what it was given shows here.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": HELPERS.replace("a + b", "a + b + 1"),
+                    },
+                )
+            ],
+            [
+                {"path": "diff", "contains": "-    AddNums = a + b"},
+                {"path": "diff", "contains": "+    AddNums = a + b + 1"},
+                {"path": "lines_added", "equals": 1},
+                {"path": "lines_removed", "equals": 1},
+            ],
+        )
+    )
+    out.append(
+        case(
             "write-module.refuses-a-stale-token",
             "The guard that stops one writer discarding another's change. A token from a "
             "read that something else has since overtaken must refuse, and the refusal has "
@@ -1520,10 +1545,50 @@ def cases() -> list[dict[str, Any]]:
                 step("xlide_git_changes", {"file_path": "${fixture}"}),
             ],
             [
-                {"path": "modules_changed", "equals": 1},
-                {"path": "modules", "contains": '"status": "modified"'},
-                {"path": "modules", "contains": "AddNums = a + b + 1"},
+                {"path": "changed", "equals": 1},
+                {"path": "changes", "contains": '"status": "modified"'},
+                {"path": "changes", "contains": '"kind": "module"'},
+                {"path": "changes", "contains": "AddNums = a + b + 1"},
             ],
+            requires="git",
+        )
+    )
+    out.append(
+        case(
+            "git-changes.reports-a-power-query-change-too",
+            "A workbook's logic can move entirely in its M with no module touched. A "
+            "comparison that only looked at VBA would call that commit empty, which is a "
+            "wrong answer rather than a missing one.",
+            "committed_workbook",
+            [
+                step(
+                    "xlide_write_query",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "set",
+                        "query_name": "Orders",
+                        "formula": "let Source = {1..10} in Source",
+                    },
+                ),
+                step("xlide_git_changes", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "changed", "equals": 1},
+                {"path": "changes", "contains": '"kind": "query"'},
+                {"path": "changes", "contains": "let Source = {1..10} in Source"},
+            ],
+            requires="git",
+        )
+    )
+    out.append(
+        case(
+            "git-changes.says-what-it-does-not-compare",
+            "Cell values are not compared, and a reviewer who does not know that reads an "
+            "empty report as an unchanged workbook. The scope travels with every answer "
+            "rather than living in the documentation.",
+            "committed_workbook",
+            [step("xlide_git_changes", {"file_path": "${fixture}"})],
+            [{"path": "covers", "contains": "cell values are not compared"}],
             requires="git",
         )
     )
@@ -1534,8 +1599,8 @@ def cases() -> list[dict[str, Any]]:
             "committed_workbook",
             [step("xlide_git_changes", {"file_path": "${fixture}"})],
             [
-                {"path": "modules_changed", "equals": 0},
-                {"path": "verdict", "equals": "no VBA changes"},
+                {"path": "changed", "equals": 0},
+                {"path": "verdict", "equals": "no changes"},
             ],
             requires="git",
         )

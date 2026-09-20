@@ -19,10 +19,16 @@ cells inside Office files, and for Visual Basic 6 projects.
 - Worksheet cells read and written in the OOXML package, and, for `.xlsb` and
   `.xls`, through Excel, with `source` and `recalculated` on every result saying
   which answered.
-- A generated contract under `contract/`: the tool surface, and 65 conformance
+- A generated contract under `contract/`: the tool surface, and 68 conformance
   cases pinning what the answers mean. Every implementation in the repository is
   verified against them, and the Python suite runs them too, so a case that is
   wrong fails before a port is built on it.
+- What changed inside a file, three ways. A write reports a unified diff of what
+  the file now holds, taken from the read-back rather than from what was sent.
+  `xlide_git_changes` compares against any git revision, one entry per module and
+  per query. `xlide-mcp --textconv` is a git textconv driver, so `git diff`,
+  `git show` and `git log -p` render a workbook as its VBA and M instead of
+  reporting that two binaries differ.
 
 ### The guards, each with a conformance case behind it
 
@@ -49,5 +55,9 @@ cells inside Office files, and for Visual Basic 6 projects.
   reason: nothing here can move the designer storage with the module.
 - Writing cells to a legacy `.xls` is refused. Saving one means choosing a
   format, and the wrong choice drops what that format cannot hold, silently.
+- A diff of a file covers its VBA, its Power Query and its sheet inventory, not
+  its cell values. Both the rendered text and every comparison result say so,
+  because a reader who does not know the scope takes an empty diff for an
+  unchanged workbook.
 
 [0.1.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v0.1.0

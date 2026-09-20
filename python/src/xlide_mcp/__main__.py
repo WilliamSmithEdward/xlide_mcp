@@ -10,10 +10,15 @@ reach to the network.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
+import tempfile
 from collections.abc import Sequence
+from pathlib import Path
 
 from .config import MAX_TIMEOUT_SECONDS, Settings, roots_from_argv
+from .errors import ToolError
+from .hosts import host_info
 from .server import __version__, build_server
 
 
@@ -29,6 +34,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument("--version", action="version", version=f"xlide-mcp {__version__}")
+    parser.add_argument(
+        "--textconv",
+        metavar="PATH",
+        help=(
+            "Print the file's VBA and Power Query as text and exit, instead of starting "
+            "the server. This is a git textconv driver: point one at it and git diff, "
+            "git show and git log -p render an Office file as source rather than "
+            "reporting that two binaries differ."
+        ),
+    )
     parser.add_argument(
         "--root",
         action="append",
@@ -77,6 +92,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.textconv is not None:
+        return textconv(args.textconv)
+
     settings = Settings.from_environment()
     roots = roots_from_argv(args.root)
     if roots:
@@ -105,6 +123,46 @@ def main(argv: Sequence[str] | None = None) -> int:
         file=sys.stderr,
     )
     server.run(args.transport)
+    return 0
+
+
+def textconv(raw: str) -> int:
+    """Render one file for git, and never fail.
+
+    git aborts the whole diff on a non-zero exit, so every path here ends in a
+    printed document and a zero. It also hands over a temporary file with no
+    useful name when the blob comes from history, which is why the extension is
+    sniffed from the bytes when the name does not carry one.
+
+    The workspace roots deliberately do not apply. This is not the server: it is
+    a local filter git runs on a file the user already has open in their own
+    repository, and refusing it there would only break their diff.
+    """
+    from .hosts import sniff_extension
+    from .textual import render
+
+    path = Path(raw)
+    if not path.exists():
+        print(f"' xlide-mcp: no such file: {raw}")
+        return 0
+
+    info = None
+    try:
+        info = host_info(path)
+    except ToolError:
+        info = None
+    if info is None:
+        sniffed = sniff_extension(path)
+        if sniffed is not None:
+            # The reader is chosen by extension, and pyOpenVBA opens a path, so
+            # the blob is copied to a name that says what it is.
+            with tempfile.TemporaryDirectory() as directory:
+                named = Path(directory) / f"blob{sniffed}"
+                shutil.copyfile(path, named)
+                sys.stdout.write(render(named))
+            return 0
+
+    sys.stdout.write(render(path, info))
     return 0
 
 

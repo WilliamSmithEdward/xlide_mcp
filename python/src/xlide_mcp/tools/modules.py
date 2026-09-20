@@ -21,7 +21,15 @@ from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import require_writable, resolve_path
 from ..tokens import check_content_token, content_token
-from ._common import bound, change_summary, limited, read_only, truncate, writes
+from ._common import (
+    bound,
+    change_summary,
+    limited,
+    read_only,
+    truncate,
+    unified_diff,
+    writes,
+)
 
 _VALID_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,30}$")
 
@@ -250,8 +258,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             "body only, because the attribute header is managed for you. A module that does "
             "not exist is created: standard by default, or a class with kind='class'. Pass "
             "expected_content_token from your read and the write is refused if the module "
-            "changed since. After writing, call xlide_analyze and treat any error as a build "
-            "failure. Ask the user first when the project is protected or signed."
+            "changed since. The result carries a diff of what the file now holds, read back "
+            "after saving, which is what to show the user when they ask what changed. After "
+            "writing, call xlide_analyze and treat any error as a build failure. Ask the user "
+            "first when the project is protected or signed."
         ),
     )
     def write_module(
@@ -291,6 +301,16 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = False,
+        include_diff: Annotated[
+            bool,
+            Field(
+                default=True,
+                description=(
+                    "Include a unified diff of what changed. Off in a loop that writes many "
+                    "modules and reads none of them back."
+                ),
+            ),
+        ] = True,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_write_module")
         path = resolve_path(file_path, settings)
@@ -359,6 +379,19 @@ def register(server: MCPServer, settings: Settings) -> None:
             "saved": True,
             **change_summary(before, after.body),
         }
+        if include_diff:
+            # Against the read-back, not against what was sent. The project
+            # re-derives a body from what it stored, so this is the one diff that
+            # shows what the file actually holds rather than what was intended.
+            diff, was_cut = unified_diff(
+                before,
+                after.body,
+                label=after.name,
+                narrower="Read the module with xlide_read_module.",
+            )
+            result["diff"] = diff
+            if was_cut:
+                result["diff_truncated"] = True
         if save_warnings:
             result["warnings"] = save_warnings
         result["next_step"] = (

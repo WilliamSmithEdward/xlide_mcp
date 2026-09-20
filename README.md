@@ -118,6 +118,51 @@ neither of them OOXML. On Windows with Excel, those go through Excel, and the
 result says `source: excel` and `recalculated: true`, because opening the
 workbook is what produced the values.
 
+## Seeing what changed
+
+An Office file is one binary blob to git, so a commit that changed a line of VBA
+and one that replaced the whole project are the same three words: `Binary files
+differ`. Two ways out, both reading the file through the same renderer.
+
+`xlide_git_changes` reports what changed since any revision, one entry per module
+and query, each with a unified diff. Call it before committing, or to review what
+an agent just did.
+
+`xlide-mcp --textconv` is a git textconv driver. Wire it up once and the file
+diffs as text everywhere git looks:
+
+```bash
+echo '*.xlsm binary diff=vba' >> .gitattributes
+git config diff.vba.textconv "xlide-mcp --textconv"
+git config diff.vba.cachetextconv true
+```
+
+```diff
+ Public Sub Greet()
+-    MsgBox "hello"
++    MsgBox "hello, world"
++    Debug.Print Now
+ End Sub
+```
+
+That is `git diff` on a `.xlsm`. `git show` and `git log -p` convert too.
+
+`binary diff=vba` rather than `diff=vba` alone. The `binary` macro means
+`-diff -merge -text`, and the later `diff=vba` overrides only its `-diff`, so the
+file keeps `-text` and git never applies end-of-line conversion to a container it
+would corrupt.
+
+In VS Code, any side of a diff that comes out of git history renders through the
+driver, because the git extension reads blobs with `git show --textconv`.
+Comparing two revisions of a workbook therefore shows VBA. The Source Control
+panel's working-tree diff does not: the right-hand side there is the file on
+disk, still binary.
+
+Both routes render VBA, Power Query and the sheet inventory, and the first line
+of every rendered file says that cell values are not included, because a reader
+who does not know the scope takes an empty diff for an unchanged workbook. git
+still stores the blob either way, so merges stay binary.
+
 ## The rules it works by
 
 These are in the server's own instructions, so every agent that connects reads

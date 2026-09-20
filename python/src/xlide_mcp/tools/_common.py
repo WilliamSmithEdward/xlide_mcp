@@ -51,18 +51,50 @@ def truncate(text: str, limit: int = MAX_RESULT_CHARS, *, hint: str = "") -> tup
     return kept + tail, True
 
 
-def unified_diff(before: str, after: str, *, label: str) -> str:
-    """A diff of two module sources, for reporting a write that already happened."""
-    diff = difflib.unified_diff(
-        before.splitlines(),
-        after.splitlines(),
-        fromfile=f"{label} (before)",
-        tofile=f"{label} (after)",
-        lineterm="",
-        n=2,
+# A diff longer than this is not one an agent reads; it is one it summarizes.
+MAX_DIFF_LINES = 400
+
+
+def unified_diff(
+    before: str,
+    after: str,
+    *,
+    label: str,
+    from_label: str = "before",
+    to_label: str = "after",
+    narrower: str = "",
+) -> tuple[str, bool]:
+    """A diff of two sources, and whether it was cut.
+
+    Every diff this server produces comes from here: the one a write reports and
+    the one a revision comparison reports are the same text for the same change,
+    which is the only reason an agent can tell them apart by context rather than
+    by shape. Line endings are normalized first, because a host rewriting CRLF is
+    not somebody's edit.
+    """
+    lines = list(
+        difflib.unified_diff(
+            _lines(before),
+            _lines(after),
+            fromfile=f"{label} ({from_label})",
+            tofile=f"{label} ({to_label})",
+            lineterm="",
+            n=3,
+        )
     )
-    body = "\n".join(diff)
-    return body or "(no change)"
+    if not lines:
+        return "(no change)", False
+    if len(lines) <= MAX_DIFF_LINES:
+        return "\n".join(lines), False
+    withheld = len(lines) - MAX_DIFF_LINES
+    kept = lines[:MAX_DIFF_LINES]
+    tail = f"... {withheld} more diff lines."
+    kept.append(f"{tail} {narrower}".strip())
+    return "\n".join(kept), True
+
+
+def _lines(text: str) -> list[str]:
+    return text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
 
 
 def change_summary(before: str, after: str) -> dict[str, int]:
