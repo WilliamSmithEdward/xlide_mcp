@@ -142,3 +142,25 @@ def test_timeout_is_held_at_the_ceiling() -> None:
     assert clamp_timeout(10_000, settings) == MAX_TIMEOUT_SECONDS
     assert clamp_timeout(0.1, settings) == 1.0
     assert clamp_timeout(None, settings) == settings.default_timeout
+
+
+def test_roots_can_be_positional_as_well_as_flagged(tmp_path: Path) -> None:
+    """A launcher that mounts the caller's folders somewhere of its own choosing
+    appends them as plain arguments; it cannot repeat a flag in front of each.
+
+    Before this, `--root /a /b` exited 2 on the unrecognised second path, which
+    meant a server that would not start at all rather than one with the wrong
+    roots.
+    """
+    from xlide_mcp.__main__ import build_parser
+    from xlide_mcp.config import roots_from_argv
+
+    first = tmp_path / "one"
+    second = tmp_path / "two"
+    first.mkdir()
+    second.mkdir()
+
+    args = build_parser().parse_args(["--root", str(first), str(second)])
+    roots = roots_from_argv(list(args.root or []) + list(args.roots or []))
+
+    assert set(roots) == {first.resolve(), second.resolve()}

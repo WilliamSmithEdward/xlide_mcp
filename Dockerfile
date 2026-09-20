@@ -36,4 +36,10 @@ USER xlide
 
 # stdio is how a client launches a server it owns. Startup logging goes to
 # stderr; stdout is protocol and a stray byte there corrupts the stream.
-ENTRYPOINT ["xlide-mcp", "--root", "/workspace"]
+#
+# The root is split out of the entrypoint and into CMD so that it can be
+# replaced. `docker run ... xlide-mcp` takes the default below; a runner that
+# mounts the caller's folder somewhere of its own choosing passes its own
+# `--root` as arguments, and Docker replaces CMD with them.
+ENTRYPOINT ["xlide-mcp"]
+CMD ["--root", "/workspace"]

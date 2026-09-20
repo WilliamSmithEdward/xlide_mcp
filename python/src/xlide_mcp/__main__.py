@@ -35,6 +35,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"xlide-mcp {__version__}")
     parser.add_argument(
+        "roots",
+        nargs="*",
+        metavar="PATH",
+        help=(
+            "Folders the server may reach, the same as --root and combined with it. "
+            "Positional because a launcher that mounts the caller's folders somewhere "
+            "of its own choosing appends them as plain arguments, and repeating a flag "
+            "in front of each one is not something it can do."
+        ),
+    )
+    parser.add_argument(
         "--textconv",
         metavar="PATH",
         help=(
@@ -96,7 +107,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return textconv(args.textconv)
 
     settings = Settings.from_environment()
-    roots = roots_from_argv(args.root)
+    roots = roots_from_argv(list(args.root or []) + list(args.roots or []))
     if roots:
         settings = settings.with_roots(roots)
     if args.read_only:
