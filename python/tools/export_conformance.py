@@ -1213,6 +1213,55 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    out.append(
+        case(
+            "shapes.a-macro-can-be-repointed-in-every-part-that-holds-it",
+            "A Forms button stores its macro twice, in its VML shape and in the sheet's "
+            "controls entry, and Excel reads both. Writing one and not the other leaves a "
+            "button whose behaviour depends on which copy Excel happens to trust.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_set_shape_macro",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Controls",
+                        "shape_name": "RunButton",
+                        "macro": "Module1.Renamed",
+                    },
+                ),
+                step("xlide_list_shapes", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "shape_count", "equals": 3},
+                {"path": "macros_run_by_shapes", "contains": "Module1.Renamed"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "shapes.an-empty-macro-clears-the-link",
+            "Unlinking a button is a thing people do, and it is not the same as deleting it.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_set_shape_macro",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Controls",
+                        "shape_name": "GoShape",
+                        "macro": "",
+                    },
+                ),
+                step("xlide_list_shapes", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "shape_count", "equals": 3},
+                {"path": "macros_run_by_shapes", "not_contains": "GoShape"},
+            ],
+        )
+    )
+
     # ------------------------------------------------------------ git changes
     out.append(
         case(

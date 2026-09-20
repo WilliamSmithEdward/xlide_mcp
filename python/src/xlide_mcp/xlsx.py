@@ -530,6 +530,12 @@ class Workbook:
         """One part's text, or None where the package does not hold it."""
         return self._optional_text(part)
 
+    def set_part_text(self, part: str, text: str) -> None:
+        """Replace one part's text. Every other part keeps its original bytes."""
+        if part not in self._parts:
+            raise XlsxError(f"{self.path.name} has no part {part}.")
+        self._parts[part] = text.encode("utf-8")
+
     def part_relationships(self, part: str) -> dict[str, dict[str, str]]:
         """A part's relationships by id, each resolved to a package part and type."""
         rels_part = _relationships_part(part)

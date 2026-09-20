@@ -114,3 +114,43 @@ def test_rebuild_the_fixture(tmp_path: Path, request: pytest.FixtureRequest) -> 
     build_with_excel(fresh)
     shutil.copy2(fresh, FIXTURE)
     assert readable(FIXTURE), "the rebuilt fixture holds no shapes"
+
+
+READ_BACK = """
+Public Function ReadBack() As String
+    Dim ws As Worksheet
+    Set ws = ActiveWorkbook.Worksheets("Controls")
+    ReadBack = ws.Buttons("RunButton").OnAction & "|" & _
+               ws.Shapes("GoShape").OnAction & "|" & _
+               CStr(ws.Shapes.Count)
+End Function
+"""
+
+
+def test_excel_accepts_a_workbook_whose_shape_macro_this_server_changed(
+    tmp_path: Path,
+) -> None:
+    """The gate for the write path. Excel opens the edited package without a
+    repair prompt and reports the macro this server put there, on both the modern
+    shape and the Forms button whose macro lives in two parts."""
+    import shutil
+
+    from xlide_mcp.shapes import set_shape_macro
+
+    workbook = tmp_path / "Shapes.xlsm"
+    shutil.copy2(FIXTURE, workbook)
+    set_shape_macro(workbook, "Controls", "RunButton", "Module1.Renamed")
+    set_shape_macro(workbook, "Controls", "GoShape", "Module1.Renamed")
+
+    from pyvbaharness import ExcelSession
+
+    with ExcelSession() as excel:
+        excel.open_document(str(workbook), read_only=True)
+        result = excel.run_vba(READ_BACK, proc="ReadBack", timeout=240)
+
+    assert result.outcome == "passed", result.error
+    button, drawing, count = str(result.value).split("|")
+    # Excel resolves the stored [N]! prefix to the workbook's own name.
+    assert button.endswith("Module1.Renamed"), button
+    assert drawing == "Module1.Renamed"
+    assert count == "3", "every shape survived the edit"

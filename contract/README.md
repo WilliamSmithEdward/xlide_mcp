@@ -6,7 +6,7 @@ repository must expose and what its answers must mean.
 | File | What it pins | Regenerate with |
 |---|---|---|
 | `tool-surface.json` | Every tool: name, description, argument schema, and whether it writes. | `python tools/export_contract.py` |
-| `conformance.json` | What the answers mean: 52 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
+| `conformance.json` | What the answers mean: 54 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
 
 Both are **derived from the Python implementation**, never hand-edited. A
 hand-maintained contract drifts the first time someone adds an argument and
@@ -37,7 +37,7 @@ diff rather than a feeling.
   "contract_version": "0.1.0",
   "reference_implementation": "python",
   "digest": "sha256:...",
-  "tool_count": 38,
+  "tool_count": 39,
   "tools": [ { "name": "...", "description": "...", "input_schema": {...}, "annotations": {...} } ],
   "generated_with": {
     "upstream": { "pyOpenVBA": "5.2.4", "pyvbaanalysis": "2.1.1", "pyvbaharness": "1.1.2" }

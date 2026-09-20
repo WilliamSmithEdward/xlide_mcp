@@ -1,6 +1,6 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:ff3ea0c7750667bd1397e2668a38bbe851de15e521acd503d4e0c4dbccbebe2c",
+  "digest": "sha256:6ed81365db61381929aeb24b475f316a34f00cbf27769918b0815343ef9c01a2",
   "generated_with": {
     "upstream": {
       "pyOpenVBA": "5.2.4",
@@ -13,7 +13,7 @@
     "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 38,
+  "tool_count": 39,
   "tools": [
     {
       "annotations": {
@@ -1291,6 +1291,48 @@
       },
       "name": "xlide_search_modules",
       "title": "Search VBA"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Changes which macro an existing shape or button runs when clicked, and saves the workbook. An empty macro clears the link. Use it after writing a Sub, so a button actually calls it, and after renaming one, because nothing rewrites an OnAction. Give the procedure as Proc or Module.Proc; it must already exist in the project, so write it first. This changes an existing shape only: adding or deleting one is not offered, because a form control lives in four parts that have to agree and a wrong one produces a workbook Excel repairs on open.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "macro": {
+            "description": "The procedure to run, as Proc or Module.Proc. Empty clears the link.",
+            "title": "Macro",
+            "type": "string"
+          },
+          "shape_name": {
+            "description": "Shape name, as xlide_list_shapes reports it.",
+            "title": "Shape Name",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet the shape is on.",
+            "title": "Sheet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "shape_name",
+          "macro"
+        ],
+        "title": "set_shape_macroArguments",
+        "type": "object"
+      },
+      "name": "xlide_set_shape_macro",
+      "title": "Point a shape at a macro"
     },
     {
       "annotations": {

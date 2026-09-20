@@ -84,7 +84,7 @@ each one has the Trust Center setting that module injection needs.
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_edit_form` |
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` |
 | Cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells` |
-| Shapes | `xlide_list_shapes` |
+| Shapes | `xlide_list_shapes`, `xlide_set_shape_macro` |
 | Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
 
 **Execution** - Windows with the desktop application.
@@ -141,8 +141,8 @@ them whether or not the user configured anything.
 ```bash
 cd python
 pip install -e ".[dev,live]"
-python -m pytest              # 201 tests, no Office needed
-python -m pytest -m live      # 11 more, real Office, Windows only
+python -m pytest              # 209 tests, no Office needed
+python -m pytest -m live      # 12 more, real Office, Windows only
 python -m ruff check src tests tools
 ```
 

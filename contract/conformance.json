@@ -133,7 +133,7 @@
       ]
     }
   },
-  "case_count": 52,
+  "case_count": 54,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -1426,6 +1426,72 @@
         {
           "path": "sheets[0].shapes",
           "contains": "\"kind\": \"checkBox\""
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-macro-can-be-repointed-in-every-part-that-holds-it",
+      "why": "A Forms button stores its macro twice, in its VML shape and in the sheet's controls entry, and Excel reads both. Writing one and not the other leaves a button whose behaviour depends on which copy Excel happens to trust.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_set_shape_macro",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "shape_name": "RunButton",
+            "macro": "Module1.Renamed"
+          }
+        },
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shape_count",
+          "equals": 3
+        },
+        {
+          "path": "macros_run_by_shapes",
+          "contains": "Module1.Renamed"
+        }
+      ]
+    },
+    {
+      "id": "shapes.an-empty-macro-clears-the-link",
+      "why": "Unlinking a button is a thing people do, and it is not the same as deleting it.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_set_shape_macro",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "shape_name": "GoShape",
+            "macro": ""
+          }
+        },
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shape_count",
+          "equals": 3
+        },
+        {
+          "path": "macros_run_by_shapes",
+          "not_contains": "GoShape"
         }
       ]
     },

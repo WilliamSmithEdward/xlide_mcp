@@ -132,3 +132,100 @@ def test_a_workbook_with_no_drawing_layer_reports_none(
     result = call("xlide_list_shapes", file_path=str(plain_workbook))
     assert result["shape_count"] == 0
     assert "macros_run_by_shapes" not in result
+
+
+def test_a_shapes_macro_can_be_repointed(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    """After renaming a Sub, nothing rewrites the OnAction that names it. This is
+    how an agent closes that gap."""
+    result = call(
+        "xlide_set_shape_macro",
+        file_path=str(shapes_workbook),
+        sheet="Controls",
+        shape_name="RunButton",
+        macro="Module1.Renamed",
+    )
+    assert result["previous_macro"] == "Module1.DoTheThing"
+    assert result["cleared"] is False
+
+    after = call("xlide_list_shapes", file_path=str(shapes_workbook))
+    assert shape(after, "RunButton")["macro"] == "Module1.Renamed"
+
+
+def test_a_form_control_is_written_in_both_places(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    """A Forms button stores its macro twice, in its VML shape and in the sheet's
+    controls entry, and Excel reads both. Writing one and not the other leaves a
+    button whose behaviour depends on which copy Excel happens to trust."""
+    result = call(
+        "xlide_set_shape_macro",
+        file_path=str(shapes_workbook),
+        sheet="Controls",
+        shape_name="RunButton",
+        macro="Module1.Renamed",
+    )
+    assert "form control (VML)" in result["parts_written"]
+    assert "form control (sheet entry)" in result["parts_written"]
+
+
+def test_a_drawing_shape_is_written_in_its_own_part(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    result = call(
+        "xlide_set_shape_macro",
+        file_path=str(shapes_workbook),
+        sheet="Controls",
+        shape_name="GoShape",
+        macro="Module1.Other",
+    )
+    assert result["parts_written"] == ["drawing"]
+    after = call("xlide_list_shapes", file_path=str(shapes_workbook))
+    assert shape(after, "GoShape")["macro"] == "Module1.Other"
+
+
+def test_an_empty_macro_clears_the_link(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    call(
+        "xlide_set_shape_macro",
+        file_path=str(shapes_workbook),
+        sheet="Controls",
+        shape_name="RunButton",
+        macro="",
+    )
+    after = call("xlide_list_shapes", file_path=str(shapes_workbook))
+    assert "macro" not in shape(after, "RunButton")
+
+
+def test_the_other_shapes_are_left_alone(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    before = call("xlide_list_shapes", file_path=str(shapes_workbook))
+    call(
+        "xlide_set_shape_macro",
+        file_path=str(shapes_workbook),
+        sheet="Controls",
+        shape_name="RunButton",
+        macro="Module1.Renamed",
+    )
+    after = call("xlide_list_shapes", file_path=str(shapes_workbook))
+
+    assert after["shape_count"] == before["shape_count"]
+    assert shape(after, "Ready") == shape(before, "Ready")
+    assert shape(after, "GoShape") == shape(before, "GoShape")
+
+
+def test_an_unknown_shape_names_the_ones_on_the_sheet(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_set_shape_macro",
+            file_path=str(shapes_workbook),
+            sheet="Controls",
+            shape_name="Nope",
+            macro="Module1.DoTheThing",
+        )
+    assert "RunButton" in refusal.value.message

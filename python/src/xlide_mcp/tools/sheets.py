@@ -154,6 +154,48 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
     @server.tool(
+        name="xlide_set_shape_macro",
+        title="Point a shape at a macro",
+        annotations=writes("Point a shape at a macro", destructive=True),
+        description=(
+            "Changes which macro an existing shape or button runs when clicked, and saves "
+            "the workbook. An empty macro clears the link. Use it after writing a Sub, so a "
+            "button actually calls it, and after renaming one, because nothing rewrites an "
+            "OnAction. Give the procedure as Proc or Module.Proc; it must already exist in "
+            "the project, so write it first. This changes an existing shape only: adding or "
+            "deleting one is not offered, because a form control lives in four parts that "
+            "have to agree and a wrong one produces a workbook Excel repairs on open."
+        ),
+    )
+    def set_shape_macro(
+        file_path: Annotated[str, Field(description="Absolute path to the Excel file.")],
+        sheet: Annotated[str, Field(description="Worksheet the shape is on.")],
+        shape_name: Annotated[
+            str, Field(description="Shape name, as xlide_list_shapes reports it.")
+        ],
+        macro: Annotated[
+            str,
+            Field(
+                description=(
+                    "The procedure to run, as Proc or Module.Proc. Empty clears the link."
+                )
+            ),
+        ],
+    ) -> dict[str, Any]:
+        require_writable(settings, "xlide_set_shape_macro")
+        path = _excel_path(file_path, settings)
+        from ..shapes import set_shape_macro as write_macro
+
+        result = write_macro(path, sheet, shape_name, macro)
+        result["path"] = str(path)
+        result["saved"] = True
+        result["note"] = (
+            "The link is stored. Excel runs the procedure on the next click, and refuses "
+            "one that is not in the project, so check it exists with xlide_list_procedures."
+        )
+        return result
+
+    @server.tool(
         name="xlide_write_cells",
         title="Write cells",
         annotations=writes("Write cells", destructive=True),

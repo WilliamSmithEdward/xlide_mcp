@@ -19,9 +19,14 @@ Excel keeps shapes in two eras, and both are read here.
   richer entry from the other parts wins.
 
 The layout was taken from XLIDE's `xlsxShapes.ts`, which measured it against
-files Excel 16 saved. This reads; it does not write. Editing a shape means
-keeping those four parts in agreement, and getting it wrong produces a workbook
-that opens and then repairs itself.
+files Excel 16 saved.
+
+The one write here is narrow on purpose: an existing shape's macro can be changed
+or cleared, and nothing is created or destroyed. That is what keeps it safe.
+Adding or removing a form control means keeping four parts in agreement, and
+getting that wrong produces a workbook that opens and then repairs itself, so it
+is not offered. Changing a value on parts that already exist has no such failure,
+and Excel was made to open the result and read the macro back.
 """
 
 from __future__ import annotations
@@ -32,7 +37,15 @@ from pathlib import Path
 from typing import Any
 
 from .errors import ToolError
-from .xlsx import Workbook, XlsxError, decode_xml, index_to_column, next_tag
+from .xlsx import (
+    Workbook,
+    XlsxError,
+    decode_xml,
+    encode_attr,
+    encode_xml,
+    index_to_column,
+    next_tag,
+)
 
 # The OnAction Excel stores is qualified to the workbook; the formula bar is not.
 _WORKBOOK_PREFIX = re.compile(r"^\[\d+\]!")
@@ -474,6 +487,209 @@ def _display_macro(stored: str) -> str:
     return _WORKBOOK_PREFIX.sub("", stored or "").strip()
 
 
+def _stored_macro(wanted: str, previous: str) -> str:
+    """The macro as the file should store it, keeping whatever prefix was there.
+
+    Excel qualifies an OnAction to the workbook, as `[1]!Module1.Proc`, and the
+    index is the workbook's own. Inventing one would be a guess; keeping the one
+    already on the shape is not, and a shape that never had a macro gets a plain
+    name, which Excel resolves.
+    """
+    if not wanted:
+        return ""
+    match = _WORKBOOK_PREFIX.match(previous or "")
+    return (match.group(0) if match else "") + wanted
+
+
+# --------------------------------------------------------------------- writing
+
+
+def set_shape_macro(
+    path: Path, sheet_name: str, shape_name: str, macro: str
+) -> dict[str, Any]:
+    """Point an existing shape at a different macro, or at none.
+
+    Deliberately narrow. This changes a value on parts that already exist and
+    creates or destroys nothing, which is what keeps it safe: adding or removing
+    a form control means keeping four parts in agreement, and getting that wrong
+    produces a workbook that opens and then repairs itself.
+
+    A form control stores its macro twice, in its VML shape and in the sheet's
+    `<controls>` entry, and Excel reads both. Writing one and not the other
+    leaves a button whose behaviour depends on which one Excel happens to trust.
+    """
+    book = Workbook(path)
+    canonical = book.canonical_sheet_name(sheet_name)
+    sheet_part = next(s.part for s in book.sheets() if s.name == canonical)
+    sheet_xml = book.part_text(sheet_part)
+    relationships = book.part_relationships(sheet_part)
+
+    wanted = (macro or "").strip()
+    written: list[str] = []
+    previous = ""
+
+    # The drawing part: the macro is an attribute on the shape's own element.
+    drawing_part = _related_part(sheet_xml, relationships, "drawing", _RELATIONSHIP_DRAWING)
+    if drawing_part:
+        drawing_xml = book.optional_part_text(drawing_part)
+        if drawing_xml is not None:
+            updated, found, before = _set_drawing_macro(drawing_xml, shape_name, wanted)
+            if found:
+                previous = previous or before
+                if updated != drawing_xml:
+                    book.set_part_text(drawing_part, updated)
+                written.append("drawing")
+
+    # The form control: the same value in its VML shape and in the sheet entry.
+    control_shape_ids = _control_shape_ids(sheet_xml, shape_name)
+    vml_part = _related_part(sheet_xml, relationships, "legacyDrawing", _RELATIONSHIP_VML)
+    if vml_part:
+        vml = book.optional_part_text(vml_part)
+        if vml is not None:
+            updated, found, before = _set_vml_macro(
+                vml, shape_name, control_shape_ids, wanted
+            )
+            if found:
+                previous = previous or before
+                if updated != vml:
+                    book.set_part_text(vml_part, updated)
+                written.append("form control (VML)")
+
+    updated_sheet, found, before = _set_control_macro(sheet_xml, shape_name, wanted)
+    if found:
+        previous = previous or before
+        if updated_sheet != sheet_xml:
+            book.set_part_text(sheet_part, updated_sheet)
+        written.append("form control (sheet entry)")
+
+    if not written:
+        existing = read_sheet_shapes(path, canonical).get(canonical, [])
+        listed = ", ".join(shape.name for shape in existing) or "(none)"
+        raise ToolError(
+            f"No shape named {shape_name!r} on {canonical}. Shapes there: {listed}."
+        )
+
+    book.save()
+    return {
+        "sheet": canonical,
+        "shape": shape_name,
+        "macro": wanted,
+        "previous_macro": _display_macro(previous),
+        "parts_written": written,
+        "cleared": not wanted,
+    }
+
+
+def _set_drawing_macro(xml: str, shape_name: str, macro: str) -> tuple[str, bool, str]:
+    """Rewrite the `macro` attribute on the element that holds this cNvPr name."""
+    for anchor_start, anchor_end in _elements(
+        xml, {"xdr:twoCellAnchor", "xdr:oneCellAnchor", "xdr:absoluteAnchor",
+              "mc:AlternateContent"}
+    ):
+        body = xml[anchor_start:anchor_end]
+        for _, start, end in _drawing_children(body, 0):
+            element = body[start:end]
+            properties = _first_tag(element, "xdr:cNvPr")
+            if properties is None or properties.get("name", "") != shape_name:
+                continue
+            opening = next_tag(element, 0)
+            if opening is None:
+                continue
+            tag = element[opening.start : opening.end]
+            before = opening.attrs.get("macro", "")
+            rebuilt = _with_attribute(tag, "macro", _stored_macro(macro, before))
+            updated_element = rebuilt + element[opening.end :]
+            updated_body = body[:start] + updated_element + body[end:]
+            return xml[:anchor_start] + updated_body + xml[anchor_end:], True, before
+    return xml, False, ""
+
+
+def _control_shape_ids(sheet_xml: str, shape_name: str) -> set[int]:
+    """The VML shape ids the sheet's `<controls>` entries give this name."""
+    found: set[int] = set()
+    for start, end in _elements(sheet_xml, {"control"}):
+        tag = _first_tag(sheet_xml[start:end], "control")
+        if tag is not None and tag.get("name", "") == shape_name:
+            found.add(_int(tag.get("shapeId")))
+    return found
+
+
+def _set_vml_macro(
+    vml: str, shape_name: str, shape_ids: set[int], macro: str
+) -> tuple[str, bool, str]:
+    """Rewrite `<x:FmlaMacro>` on the VML shape this control owns.
+
+    A VML shape carries no name of its own, so it is matched by the id the
+    sheet's `<controls>` entry gave it. Excel 2007 writes no such entry, and then
+    the name is the one this reader synthesized from the object type and the id.
+    """
+    for start, end in _elements(vml, {"v:shape"}):
+        inner = vml[start:end]
+        object_type_match = _OBJECT_TYPE.search(inner)
+        if object_type_match is None or object_type_match.group(1) == "Note":
+            continue
+        head = inner[: inner.find(">") + 1]
+        spid = _SPID.search(head)
+        if spid is None:
+            continue
+        identifier = int(spid.group(1))
+        synthesized = f"{object_type_match.group(1)} {identifier % 1024}"
+        if identifier not in shape_ids and synthesized != shape_name:
+            continue
+        before = _client_data(inner, "FmlaMacro")
+        stored = _stored_macro(macro, before)
+        updated_inner = _set_client_data(inner, "FmlaMacro", stored)
+        return vml[:start] + updated_inner + vml[end:], True, before
+    return vml, False, ""
+
+
+def _set_control_macro(sheet_xml: str, shape_name: str, macro: str) -> tuple[str, bool, str]:
+    """Rewrite the `macro` attribute on this control's `<controlPr>`."""
+    for start, end in _elements(sheet_xml, {"control"}):
+        body = sheet_xml[start:end]
+        tag = _first_tag(body, "control")
+        if tag is None or tag.get("name", "") != shape_name:
+            continue
+        properties = next_tag(body, body.find("<controlPr"))
+        if properties is None or properties.name != "controlPr":
+            return sheet_xml, False, ""
+        before = properties.attrs.get("macro", "")
+        original = body[properties.start : properties.end]
+        rebuilt = _with_attribute(original, "macro", _stored_macro(macro, before))
+        updated_body = body[: properties.start] + rebuilt + body[properties.end :]
+        return sheet_xml[:start] + updated_body + sheet_xml[end:], True, before
+    return sheet_xml, False, ""
+
+
+def _with_attribute(tag: str, name: str, value: str) -> str:
+    """Set or remove one attribute on a start tag, leaving the rest as written."""
+    pattern = re.compile(rf'\s+{re.escape(name)}="[^"]*"')
+    stripped = pattern.sub("", tag)
+    if not value:
+        return stripped
+    closing = "/>" if stripped.endswith("/>") else ">"
+    head = stripped[: -len(closing)]
+    return f'{head} {name}="{encode_attr(value)}"{closing}'
+
+
+def _set_client_data(inner: str, name: str, value: str) -> str:
+    """Set or remove one `<x:Name>` element inside a VML shape's ClientData."""
+    pattern = re.compile(rf"\s*<x:{name}>.*?</x:{name}>", re.DOTALL)
+    stripped = pattern.sub("", inner)
+    if not value:
+        return stripped
+    # Put it back where Excel writes it: first inside the ClientData block.
+    match = re.search(r"<x:ClientData\b[^>]*>", stripped)
+    if match is None:
+        return stripped
+    insert_at = match.end()
+    return (
+        stripped[:insert_at]
+        + f"\n   <x:{name}>{encode_xml(value)}</x:{name}>"
+        + stripped[insert_at:]
+    )
+
+
 def _int(value: str | None) -> int:
     try:
         return int(value or 0)
@@ -481,4 +697,4 @@ def _int(value: str | None) -> int:
         return 0
 
 
-__all__ = ["Shape", "ToolError", "XlsxError", "read_sheet_shapes"]
+__all__ = ["Shape", "ToolError", "XlsxError", "read_sheet_shapes", "set_shape_macro"]
