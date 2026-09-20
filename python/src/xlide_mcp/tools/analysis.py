@@ -40,7 +40,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Runs static analysis over every VBA module in an Office file and returns the "
             "problems with module, line, column, code and message. Needs no Office "
             "installation and runs nothing. Each file is measured against its own host's "
-            "object model, so Word code is never judged by Excel's surface. Call this after "
+            "object model, so Word code is never judged by Excel's surface, and a Visual "
+            "Basic 6 project against no host at all, because its code does not run in one. "
+            "Call this after "
             "every VBA change and treat any problem at error severity as a build failure: fix "
             "it and analyze again until it is clean. Warnings are worth reading; some are "
             "style, some are the bug."
@@ -80,7 +82,7 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         try:
             by_module = analyze_project(
-                [item.module_input for item in prepared], host=info.host
+                [item.module_input for item in prepared], host=_analysis_host(info)
             )
         except Exception as exc:
             raise ToolError(
@@ -271,6 +273,16 @@ def register(server: MCPServer, settings: Settings) -> None:
 
 
 _RANK = {"error": 3, "warning": 2, "information": 1}
+
+
+def _analysis_host(info: Any) -> str | None:
+    """The object model to measure against, or none.
+
+    A VB6 project has no Office host: its code runs in VB6, not in Excel. Passing
+    "vb6" as a host would ask the analyzer for a registry it does not have, and
+    passing "excel" would measure a VB6 form against a workbook's surface.
+    """
+    return None if info.host == "vb6" else info.host
 
 
 def _severity_floor(name: str) -> int:

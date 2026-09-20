@@ -31,6 +31,17 @@ from .tokens import content_token
 
 ModuleKind = Literal["standard", "class", "document", "userform"]
 
+# A VB6 manifest names more kinds than VBA has. They map onto the four this
+# server reports, so one vocabulary reaches the caller whatever was opened.
+_VB6_KINDS = {
+    "standard": "standard",
+    "class": "class",
+    "form": "userform",
+    "usercontrol": "userform",
+    "propertypage": "userform",
+    "designer": "class",
+}
+
 # Modules the host owns. They can be written, and cannot be renamed or deleted:
 # the host recreates them and the project stops matching the document.
 _DOCUMENT_KIND: ModuleKind = "document"
@@ -107,20 +118,35 @@ def read_modules(handle: Any, info: HostInfo) -> list[ModuleView]:
                 f"Module {component.name!r} could not be decompressed: {exc}. "
                 "The VBA project may be damaged; xlide_validate_project reports what it can see."
             ) from exc
-        kind = classify_module_kind(
-            source,
-            extension=info.extension,
-            pyopenvba_standard=is_standard_component(component),
+        # A VB6 component knows exactly what it is, because the project manifest
+        # said so. Classifying it from its text would turn a form into a class.
+        declared = getattr(component, "xlide_kind", "")
+        kind_value = (
+            _VB6_KINDS.get(declared, declared)
+            if declared
+            else classify_module_kind(
+                source,
+                extension=info.extension,
+                pyopenvba_standard=is_standard_component(component),
+            ).value
         )
         # The attribute header is what the VBE hides, so the body is what an agent
         # should be reading and editing. pyvbaanalysis keeps attributes instead,
         # because to its parser they are ordinary module statements; that is the
         # analysis surface, not this one, and the two are deliberately different.
-        header, body = split_attribute_header(source)
+        if declared:
+            # A VB6 component has already split itself, and it has to: a form
+            # keeps a `VERSION ... Begin ... End` designer block that
+            # split_attribute_header does not recognize, so letting it try hands
+            # the caller VB's form markup as though it were code to edit.
+            body = component.body
+            header = source[: len(source) - len(body)]
+        else:
+            header, body = split_attribute_header(source)
         views.append(
             ModuleView(
                 name=component.name,
-                kind=kind.value,  # type: ignore[arg-type]
+                kind=kind_value,  # type: ignore[arg-type]
                 body=body,
                 full_source=source,
                 header_lines=len(header.splitlines()),

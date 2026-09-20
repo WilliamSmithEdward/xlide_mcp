@@ -213,3 +213,18 @@ def access_designs(workspace: Path) -> Path:
         report.add_control("Label", "Banner", section="PageHeaderSection", caption="Header")
         db.save()
     return path
+
+
+@pytest.fixture
+def vb6_project(workspace: Path) -> Path:
+    """A .vbp with a standard module and a form that calls into it.
+
+    The files are written in the ANSI code page, which is what VB6 writes.
+    """
+    from tests_vb6_sources import VB6_FORM, VB6_HELPERS, VB6_MANIFEST
+
+    (workspace / "Helpers.bas").write_text(VB6_HELPERS, encoding="cp1252", newline="")
+    (workspace / "Form1.frm").write_text(VB6_FORM, encoding="cp1252", newline="")
+    project = workspace / "Demo.vbp"
+    project.write_text(VB6_MANIFEST, encoding="cp1252", newline="")
+    return project

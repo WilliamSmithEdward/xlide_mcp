@@ -2,7 +2,8 @@
 
 **An MCP server for the code inside Office files.** The VBA, the UserForms, the
 Power Query and the worksheet cells in Excel, Word, PowerPoint and Access
-documents, reachable by any agent that speaks the Model Context Protocol.
+documents, plus Visual Basic 6 projects, reachable by any agent that speaks the
+Model Context Protocol.
 
 Reading and writing the file needs no Office installation and works on Windows,
 macOS and Linux. Running macros and tests needs Windows with the desktop
@@ -103,6 +104,7 @@ session inside the Visual Basic Editor.
 | Word | `.docm` `.dotm` `.doc` | - | - |
 | PowerPoint | `.pptm` `.potm` | - | - |
 | Access | `.accdb` `.mdb` | - | - |
+| Visual Basic 6 | `.vbp` | - | - |
 
 A recognized extension outside those sets is listed with the reason it cannot be
 opened, rather than left silently out of a listing.
@@ -139,7 +141,7 @@ them whether or not the user configured anything.
 ```bash
 cd python
 pip install -e ".[dev,live]"
-python -m pytest              # 182 tests, no Office needed
+python -m pytest              # 201 tests, no Office needed
 python -m pytest -m live      # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

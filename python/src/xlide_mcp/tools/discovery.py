@@ -32,9 +32,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             "paths, host application and whether their VBA can be opened. Call this first "
             "when the user has not named a file. Covers Excel (.xlsm, .xlsb, .xlam, .xls, "
             "and .xlsx for Power Query and sheets), Word (.docm, .dotm, .doc), PowerPoint "
-            "(.pptm, .potm) and Access (.accdb, .mdb). Files whose extension is recognized "
-            "but not openable are listed with the reason, so a template or add-in is not "
-            "silently missing."
+            "(.pptm, .potm), Access (.accdb, .mdb), and Visual Basic 6 projects (.vbp, "
+            "whose modules are the files its manifest names). Files whose extension is "
+            "recognized but not openable are listed with the reason, so a template or add-in "
+            "is not silently missing."
         ),
     )
     def list_projects(

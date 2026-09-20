@@ -73,6 +73,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
+        _refuse_vb6(info, "xlide_export_modules")
         folder = (
             resolve_directory(export_folder, settings, must_exist=False)
             if export_folder.strip()
@@ -178,6 +179,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
+        _refuse_vb6(info, "xlide_import_modules")
         folder = resolve_directory(source_folder, settings)
 
         incoming: dict[str, tuple[Path, str]] = {}
@@ -268,6 +270,21 @@ def register(server: MCPServer, settings: Settings) -> None:
         if save_warnings:
             result["warnings"] = save_warnings
         return result
+
+
+def _refuse_vb6(info: Any, operation: str) -> None:
+    """A VB6 project's modules are already files on disk.
+
+    Exporting them would write a second copy under the wrong extension - a form
+    is a .frm, not the .cls an export names a non-standard module - and importing
+    would put back what is already there.
+    """
+    if info.host == "vb6":
+        raise ToolError(
+            f"{operation} moves modules between a container and files on disk. A Visual "
+            "Basic 6 project's modules are already files: edit them where they are, or "
+            "read and write them with xlide_read_module and xlide_write_module."
+        )
 
 
 def _read_text(path: Path) -> str | None:

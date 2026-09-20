@@ -46,6 +46,7 @@ src/xlide_mcp/
   tokens.py         content tokens, the guard on a stale write
   xlsx.py           worksheet cells, read and written in the OOXML package
   shapes.py         the drawing layer: buttons, shapes, and the macros they run
+  vb6.py            a .vbp read as a project, through the same surface
   errors.py         the one error type, and the helpers that build its message
   tools/
     discovery.py    list, summarize, validate, create, doctor
@@ -71,7 +72,7 @@ live layer needs the VBE add-in running.
 ## Test
 
 ```bash
-python -m pytest                 # 182 tests, no Office needed
+python -m pytest                 # 201 tests, no Office needed
 python -m pytest -m live         # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

@@ -15,7 +15,11 @@ from __future__ import annotations
 SERVER_INSTRUCTIONS = """\
 Read and change the VBA, UserForms, Power Query and worksheet cells inside Office \
 files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint \
-(.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx.
+(.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain \
+.xlsx, and Visual Basic 6 projects (.vbp).
+
+A .vbp's modules are files on disk, so its writes land as they are made and it is \
+never protected or signed. Everything else works the same way.
 
 Reading and writing the file needs no Office installation and works on any platform. \
 Running macros and tests needs Windows with the application installed.

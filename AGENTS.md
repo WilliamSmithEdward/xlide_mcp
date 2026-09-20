@@ -1,7 +1,8 @@
 # Working on xlide_mcp
 
 An MCP server for the code inside Office files: the VBA, the UserForms, the Power
-Query and the worksheet cells in Excel, Word, PowerPoint and Access documents.
+Query and the worksheet cells in Excel, Word, PowerPoint and Access documents,
+plus Visual Basic 6 projects.
 [README.md](README.md) says what it does. This says how to change it.
 
 Adopt these first:
@@ -41,7 +42,7 @@ contract/          tool-surface.json, conformance.json   generated, normative
 docs/porting.md    how a port is built and verified
 python/            the reference implementation
   src/xlide_mcp/   the server
-  tests/           182 without Office, 11 more with
+  tests/           201 without Office, 11 more with
   tools/           the two contract exporters
 <language>/        a port
 ```
@@ -54,7 +55,7 @@ Read [python/README.md](python/README.md) for the module layout and
 Then, in order:
 
 1. Change the Python implementation.
-2. `cd python && python -m pytest` - 182 tests, no Office needed.
+2. `cd python && python -m pytest` - 201 tests, no Office needed.
 3. `python -m ruff check src tests tools`
 4. `python tools/export_contract.py && python tools/export_conformance.py`
 5. On Windows with Office: `python -m pytest -m live` - 11 more.
@@ -86,7 +87,7 @@ Rules the surface holds to, each of which has a conformance case behind it:
   implementation that reported a computed value it did not compute would be
   lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 14 of the 49 conformance cases
+A refusal is as much of the contract as a success: 14 of the 52 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

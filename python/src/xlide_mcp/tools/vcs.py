@@ -80,6 +80,12 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
+        if info.host == "vb6":
+            raise ToolError(
+                "A Visual Basic 6 project's modules are text files that git diffs directly, "
+                "so `git diff` already shows what changed in them. This tool exists for the "
+                "hosts whose code is inside a binary container."
+            )
         repository = _repository_for(path)
         relative = _relative_to_repository(path, repository)
         blob = _blob_at(repository, revision, relative, path.name)

@@ -21,14 +21,20 @@ from typing import Any, Literal
 
 from .errors import ToolError
 
-HostName = Literal["excel", "word", "powerpoint", "access"]
+HostName = Literal["excel", "word", "powerpoint", "access", "vb6"]
 
 # Extensions this server opens, by host.
 EXCEL_READABLE = frozenset({".xlsm", ".xlsb", ".xlam", ".xls"})
 WORD_READABLE = frozenset({".docm", ".dotm", ".doc"})
 POWERPOINT_READABLE = frozenset({".pptm", ".potm"})
 ACCESS_READABLE = frozenset({".accdb", ".mdb"})
-READABLE = EXCEL_READABLE | WORD_READABLE | POWERPOINT_READABLE | ACCESS_READABLE
+# A Visual Basic 6 project is a text manifest naming files on disk. It is here
+# because reading it as a project - which files are modules, what each is called
+# inside VB, and analyzing them together - is what a file tool cannot do alone.
+VB6_READABLE = frozenset({".vbp"})
+READABLE = (
+    EXCEL_READABLE | WORD_READABLE | POWERPOINT_READABLE | ACCESS_READABLE | VB6_READABLE
+)
 
 # Power Query lives outside the VBA project, in a custom XML part, so a plain
 # .xlsx carries queries and no macros at all.
@@ -64,6 +70,7 @@ _HOST_BY_EXTENSION: dict[str, HostName] = {
     **dict.fromkeys(WORD_READABLE | {".dot"}, "word"),
     **dict.fromkeys(POWERPOINT_READABLE | {".ppt", ".ppsm", ".ppam", ".ppa"}, "powerpoint"),
     **dict.fromkeys(ACCESS_READABLE | {".accda", ".mda"}, "access"),
+    **dict.fromkeys(VB6_READABLE, "vb6"),
 }
 
 HOST_TITLE: dict[HostName, str] = {
@@ -71,6 +78,7 @@ HOST_TITLE: dict[HostName, str] = {
     "word": "Word",
     "powerpoint": "PowerPoint",
     "access": "Access",
+    "vb6": "Visual Basic 6",
 }
 
 
@@ -97,14 +105,15 @@ class HostInfo:
 
     @property
     def supports_forms(self) -> bool:
-        # Access keeps forms and reports in the database; the other three keep
-        # UserForms in the VBA project. Both read through forms().
-        return self.readable
+        # Access keeps forms and reports in the database; the package hosts keep
+        # UserForms in the VBA project. Both read through forms(). A VB6 form's
+        # design is text in its own .frm and is not an MSForms control tree.
+        return self.readable and self.host != "vb6"
 
     @property
     def writes_on_edit(self) -> bool:
-        """Access writes into the database as the edit is made, not at save."""
-        return self.host == "access"
+        """Access and VB6 write as the edit is made rather than at save."""
+        return self.host in {"access", "vb6"}
 
 
 def host_info(path: str | Path) -> HostInfo:
@@ -166,6 +175,10 @@ def container_class(info: HostInfo) -> Any:
     """The pyOpenVBA class that opens this host's files."""
     import pyopenvba
 
+    if info.host == "vb6":
+        from .vb6 import Vb6Project
+
+        return Vb6Project
     return {
         "excel": pyopenvba.ExcelFile,
         "word": pyopenvba.WordFile,

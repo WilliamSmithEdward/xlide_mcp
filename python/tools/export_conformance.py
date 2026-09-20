@@ -68,6 +68,37 @@ ACCESS_MODULE = CRLF.join(
     ]
 )
 
+VB6_HELPERS = CRLF.join(
+    [
+        'Attribute VB_Name = "Helpers"',
+        "Option Explicit",
+        "",
+        "Public Function AddNums(ByVal a As Long, ByVal b As Long) As Long",
+        "    AddNums = a + b",
+        "End Function",
+        "",
+    ]
+)
+
+# A VB6 form keeps a designer block ahead of its attributes. It is what VB draws
+# the form from, it is not code, and handing it to an agent as editable source
+# invites an edit that stops the project loading.
+VB6_FORM = CRLF.join(
+    [
+        "VERSION 5.00",
+        "Begin VB.Form Form1 ",
+        '   Caption         =   "Demo"',
+        "End",
+        'Attribute VB_Name = "Form1"',
+        "Option Explicit",
+        "",
+        "Private Sub Form_Load()",
+        "    Debug.Print AddNums(1, 2)",
+        "End Sub",
+        "",
+    ]
+)
+
 BROKEN = CRLF.join(
     [
         "Option Explicit",
@@ -124,6 +155,31 @@ FIXTURES: dict[str, Any] = {
         "tables": [
             {"name": "Orders", "columns": [{"name": "Id", "type": "long"}]},
         ],
+    },
+    "vb6_project": {
+        "kind": "visual-basic-6-project",
+        "file_name": "Demo.vbp",
+        "why": (
+            "A .vbp is a text manifest whose modules are files on disk. It is in the surface "
+            "because reading it AS a project - which files are modules, what each is called "
+            "inside VB, and analyzing them together - is what a file tool cannot do alone."
+        ),
+        "files": {
+            "Demo.vbp": CRLF.join(
+                [
+                    "Type=Exe",
+                    "Form=Form1.frm",
+                    "Module=Helpers; Helpers.bas",
+                    'Startup="Form1"',
+                    'Name="DemoProject"',
+                    "MajorVer=1",
+                    "",
+                ]
+            ),
+            "Helpers.bas": VB6_HELPERS,
+            "Form1.frm": VB6_FORM,
+        },
+        "encoding": "The machine's ANSI code page, which is what VB6 writes.",
     },
     "access_designs": {
         "kind": "access-database",
@@ -1053,6 +1109,61 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "properties", "not_contains": "Unidentified"},
                 {"path": "properties._unnamed_property_count", "at_least": 1},
+            ],
+        )
+    )
+
+    # ------------------------------------------------------------------- vb6
+    out.append(
+        case(
+            "vb6.a-form-reads-as-code-not-as-markup",
+            "A VB6 form keeps a designer block ahead of its attributes. It is what VB draws "
+            "the form from rather than something to edit, and a reader that hands it over as "
+            "source invites an edit that stops the project loading.",
+            "vb6_project",
+            [step("xlide_read_module", {"file_path": "${fixture}", "module_name": "Form1"})],
+            [
+                {"path": "kind", "equals": "userform"},
+                {"path": "source", "starts_with": "Option Explicit"},
+                {"path": "source", "not_contains": "Begin VB.Form"},
+                {"path": "source", "contains": "Private Sub Form_Load"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "vb6.analysis-resolves-across-the-project",
+            "The thing a file tool cannot do. Form_Load calls AddNums, which lives in another "
+            "file; analyzed one file at a time it is an undefined name.",
+            "vb6_project",
+            [step("xlide_analyze", {"file_path": "${fixture}"})],
+            [
+                {"path": "host", "equals": "vb6"},
+                {"path": "counts.error", "equals": 0},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "vb6.a-rename-moves-the-name-the-file-and-the-manifest",
+            "VB6 keeps a module's name in three places: the manifest line, the file name and "
+            "the VB_Name attribute. Moving one without the others leaves a project that will "
+            "not load.",
+            "vb6_project",
+            [
+                step(
+                    "xlide_rename_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "new_name": "Tools",
+                    },
+                ),
+                step("xlide_list_modules", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "modules", "contains": "Tools"},
+                {"path": "modules", "not_contains": "Helpers"},
             ],
         )
     )

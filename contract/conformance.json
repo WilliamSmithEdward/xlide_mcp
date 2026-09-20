@@ -66,6 +66,17 @@
         }
       ]
     },
+    "vb6_project": {
+      "kind": "visual-basic-6-project",
+      "file_name": "Demo.vbp",
+      "why": "A .vbp is a text manifest whose modules are files on disk. It is in the surface because reading it AS a project - which files are modules, what each is called inside VB, and analyzing them together - is what a file tool cannot do alone.",
+      "files": {
+        "Demo.vbp": "Type=Exe\r\nForm=Form1.frm\r\nModule=Helpers; Helpers.bas\r\nStartup=\"Form1\"\r\nName=\"DemoProject\"\r\nMajorVer=1\r\n",
+        "Helpers.bas": "Attribute VB_Name = \"Helpers\"\r\nOption Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b\r\nEnd Function\r\n",
+        "Form1.frm": "VERSION 5.00\r\nBegin VB.Form Form1 \r\n   Caption         =   \"Demo\"\r\nEnd\r\nAttribute VB_Name = \"Form1\"\r\nOption Explicit\r\n\r\nPrivate Sub Form_Load()\r\n    Debug.Print AddNums(1, 2)\r\nEnd Sub\r\n"
+      },
+      "encoding": "The machine's ANSI code page, which is what VB6 writes."
+    },
     "access_designs": {
       "kind": "access-database",
       "file_name": "Designs.accdb",
@@ -122,7 +133,7 @@
       ]
     }
   },
-  "case_count": 49,
+  "case_count": 52,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -1241,6 +1252,95 @@
         {
           "path": "properties._unnamed_property_count",
           "at_least": 1
+        }
+      ]
+    },
+    {
+      "id": "vb6.a-form-reads-as-code-not-as-markup",
+      "why": "A VB6 form keeps a designer block ahead of its attributes. It is what VB draws the form from rather than something to edit, and a reader that hands it over as source invites an edit that stops the project loading.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Form1"
+          }
+        }
+      ],
+      "fixture": "vb6_project",
+      "expect": [
+        {
+          "path": "kind",
+          "equals": "userform"
+        },
+        {
+          "path": "source",
+          "starts_with": "Option Explicit"
+        },
+        {
+          "path": "source",
+          "not_contains": "Begin VB.Form"
+        },
+        {
+          "path": "source",
+          "contains": "Private Sub Form_Load"
+        }
+      ]
+    },
+    {
+      "id": "vb6.analysis-resolves-across-the-project",
+      "why": "The thing a file tool cannot do. Form_Load calls AddNums, which lives in another file; analyzed one file at a time it is an undefined name.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_analyze",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "vb6_project",
+      "expect": [
+        {
+          "path": "host",
+          "equals": "vb6"
+        },
+        {
+          "path": "counts.error",
+          "equals": 0
+        }
+      ]
+    },
+    {
+      "id": "vb6.a-rename-moves-the-name-the-file-and-the-manifest",
+      "why": "VB6 keeps a module's name in three places: the manifest line, the file name and the VB_Name attribute. Moving one without the others leaves a project that will not load.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_rename_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "new_name": "Tools"
+          }
+        },
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "vb6_project",
+      "expect": [
+        {
+          "path": "modules",
+          "contains": "Tools"
+        },
+        {
+          "path": "modules",
+          "not_contains": "Helpers"
         }
       ]
     },
