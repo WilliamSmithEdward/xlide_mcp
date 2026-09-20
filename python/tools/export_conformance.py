@@ -1524,6 +1524,77 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    # ------------------------------------------------------------- formatting
+    out.append(
+        case(
+            "format-cells.changes-only-what-was-asked-for",
+            "A tool that rebuilt a cell's whole format to set one flag would flatten every "
+            "number format under a header row the first time somebody made it bold, and "
+            "nothing would say so. Each cell keeps the rest of its own format.",
+            "workbook",
+            [
+                step(
+                    "xlide_format_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "cell_range": "A1",
+                        "number_format": "#,##0.00",
+                    },
+                ),
+                step(
+                    "xlide_format_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "cell_range": "A1",
+                        "bold": True,
+                    },
+                ),
+            ],
+            [
+                {"path": "applied", "contains": "font"},
+                {"path": "applied", "not_contains": "number format"},
+                {"path": "saved", "equals": True},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "format-cells.a-call-that-changes-nothing-is-refused",
+            "Saving a file for no reason and reporting success is worse than saying nothing "
+            "was asked for, because the caller learns nothing and the file's timestamp moves.",
+            "workbook",
+            [
+                step(
+                    "xlide_format_cells",
+                    {"file_path": "${fixture}", "sheet": "Sheet1", "cell_range": "A1"},
+                    error_contains="Nothing to change",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "format-cells.a-colour-is-taken-with-or-without-its-hash",
+            "A calling model writes '#FF0000' about as often as 'FF0000'. Refusing one of "
+            "them spends a round trip on punctuation.",
+            "workbook",
+            [
+                step(
+                    "xlide_format_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "cell_range": "A1",
+                        "fill_color": "#FF0000",
+                    },
+                )
+            ],
+            [{"path": "applied", "contains": "fill"}],
+        )
+    )
+
     # ------------------------------------------------------------ git changes
     out.append(
         case(

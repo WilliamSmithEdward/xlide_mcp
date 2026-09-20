@@ -183,7 +183,7 @@
       ]
     }
   },
-  "case_count": 68,
+  "case_count": 71,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -1796,6 +1796,86 @@
         {
           "path": "macros_run_by_shapes",
           "not_contains": "GoShape"
+        }
+      ]
+    },
+    {
+      "id": "format-cells.changes-only-what-was-asked-for",
+      "why": "A tool that rebuilt a cell's whole format to set one flag would flatten every number format under a header row the first time somebody made it bold, and nothing would say so. Each cell keeps the rest of its own format.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_format_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1",
+            "number_format": "#,##0.00"
+          }
+        },
+        {
+          "tool": "xlide_format_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1",
+            "bold": true
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "applied",
+          "contains": "font"
+        },
+        {
+          "path": "applied",
+          "not_contains": "number format"
+        },
+        {
+          "path": "saved",
+          "equals": true
+        }
+      ]
+    },
+    {
+      "id": "format-cells.a-call-that-changes-nothing-is-refused",
+      "why": "Saving a file for no reason and reporting success is worse than saying nothing was asked for, because the caller learns nothing and the file's timestamp moves.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_format_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1"
+          },
+          "error_contains": "Nothing to change"
+        }
+      ],
+      "fixture": "workbook"
+    },
+    {
+      "id": "format-cells.a-colour-is-taken-with-or-without-its-hash",
+      "why": "A calling model writes '#FF0000' about as often as 'FF0000'. Refusing one of them spends a round trip on punctuation.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_format_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1",
+            "fill_color": "#FF0000"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "applied",
+          "contains": "fill"
         }
       ]
     },

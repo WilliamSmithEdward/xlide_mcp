@@ -110,7 +110,7 @@ each one has the Trust Center setting that module injection needs.
 | Analysis | `xlide_analyze`, `xlide_analyze_source`, `xlide_rules` |
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_manage_form`, `xlide_edit_form` |
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` (set, rename, remove, load, unload) |
-| Cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells` |
+| Cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_format_cells` |
 | Shapes | `xlide_list_shapes`, `xlide_set_shape_macro` |
 | Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
 

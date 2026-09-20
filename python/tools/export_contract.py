@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import hashlib
 import json
 import sys
@@ -87,12 +88,20 @@ def build_contract() -> dict[str, Any]:
 
 
 def _version(distribution: str, module_name: str) -> str:
-    """The version actually in use.
+    """The version actually in use, from whichever source is further ahead.
 
-    An editable install keeps the distribution metadata from whenever it was
-    installed, so for a sibling checkout that moves on, metadata says 1.2.0 while
-    the code being exercised is 2.1.1. The imported module is the one that ran.
+    Neither source is reliable on its own, and both failures have been seen here.
+    An editable install keeps the metadata from whenever it was installed, so a
+    sibling checkout that moved on reads 1.2.0 from metadata and 2.1.1 from the
+    module. A released package can ship the opposite: pyOfficeEditor 0.2.1 has
+    `__version__ = "0.1.0"` left behind in its `__init__`, so the module
+    under-reports by two releases.
+
+    Taking the later of the two is right for both. A version only ever moves
+    forwards, so whichever source claims more is the one that was updated, and
+    the one that claims less is the half of a two-part write that got missed.
     """
+    found: list[str] = []
     try:
         imported = __import__(module_name)
     except ImportError:
@@ -100,11 +109,27 @@ def _version(distribution: str, module_name: str) -> str:
     else:
         declared = getattr(imported, "__version__", "")
         if declared:
-            return str(declared)
-    try:
-        return metadata.version(distribution)
-    except metadata.PackageNotFoundError:
+            found.append(str(declared))
+    with contextlib.suppress(metadata.PackageNotFoundError):
+        found.append(metadata.version(distribution))
+
+    if not found:
         return "not installed"
+    return max(found, key=_ordering)
+
+
+def _ordering(version: str) -> tuple[int, ...]:
+    """A version as numbers, for comparing two of them.
+
+    Anything non-numeric sorts as zero rather than raising. This decides which
+    of two strings to print, so a version scheme nobody anticipated should give
+    a slightly odd answer, not stop the export.
+    """
+    parts: list[int] = []
+    for piece in version.split("."):
+        digits = "".join(c for c in piece if c.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
 
 
 #  Keys that describe the export rather than the surface. A port pins the digest

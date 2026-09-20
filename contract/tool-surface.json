@@ -1,12 +1,12 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:c3c6a9c47845878aef7a16a10e1c42fce969c709578b39bee345793e437e67f2",
+  "digest": "sha256:2b0f3c5cb8f3807fd20af9600a50ec070804f7d1b6a99538d519e309cae2738e",
   "generated_with": {
     "upstream": {
-      "pyOfficeEditor": "0.1.0",
+      "pyOfficeEditor": "0.2.1",
       "pyOpenVBA": "6.0.0",
       "pyvbaanalysis": "2.1.1",
-      "pyvbaharness": "1.1.2"
+      "pyvbaharness": "not installed"
     }
   },
   "reference_implementation": "python",
@@ -14,7 +14,7 @@
     "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 40,
+  "tool_count": 41,
   "tools": [
     {
       "annotations": {
@@ -408,6 +408,168 @@
       },
       "name": "xlide_export_modules",
       "title": "Export modules to files"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Changes how a range looks: bold and font, fill colour, borders, alignment, number format, and merging. Only what you pass is changed, so each cell keeps the rest of its own format and making a header row bold does not flatten the number formats under it. Colours are RRGGBB or AARRGGBB hex without a leading hash. A number format is an Excel format code such as '#,##0.00' or 'yyyy-mm-dd'; that code is also what decides whether a number is shown as a date. Works on .xlsx, .xlsm and .xlam.",
+      "input_schema": {
+        "properties": {
+          "bold": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Bold on or off.",
+            "title": "Bold"
+          },
+          "border_color": {
+            "default": "",
+            "description": "Border colour as hex. Defaults to automatic.",
+            "title": "Border Color",
+            "type": "string"
+          },
+          "border_style": {
+            "default": "",
+            "description": "Border on all four sides: thin, medium, thick, double, dotted, dashed, hair, or none to remove.",
+            "title": "Border Style",
+            "type": "string"
+          },
+          "cell_range": {
+            "description": "A1-style range, such as A1:D1, or a single cell.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "fill_color": {
+            "default": "",
+            "description": "Solid background colour as hex. 'none' clears the fill back to no fill.",
+            "title": "Fill Color",
+            "type": "string"
+          },
+          "font_color": {
+            "default": "",
+            "description": "Text colour as hex, such as 'FF0000'.",
+            "title": "Font Color",
+            "type": "string"
+          },
+          "font_name": {
+            "default": "",
+            "description": "Typeface, such as 'Calibri'.",
+            "title": "Font Name",
+            "type": "string"
+          },
+          "font_size": {
+            "default": 0,
+            "description": "Points. 0 leaves it alone.",
+            "minimum": 0,
+            "title": "Font Size",
+            "type": "number"
+          },
+          "horizontal": {
+            "default": "",
+            "description": "left, center, right, fill, justify or general.",
+            "title": "Horizontal",
+            "type": "string"
+          },
+          "italic": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Italic on or off.",
+            "title": "Italic"
+          },
+          "merge": {
+            "default": "",
+            "description": "'merge' joins the range into one cell, keeping only the top-left value. 'unmerge' splits it back. Empty leaves merging alone.",
+            "title": "Merge",
+            "type": "string"
+          },
+          "number_format": {
+            "default": "",
+            "description": "Excel format code, such as '#,##0.00', '0%' or 'yyyy-mm-dd'.",
+            "title": "Number Format",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Strikethrough on or off.",
+            "title": "Strike"
+          },
+          "underline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Single underline on or off.",
+            "title": "Underline"
+          },
+          "vertical": {
+            "default": "",
+            "description": "top, center, bottom, justify or distributed.",
+            "title": "Vertical",
+            "type": "string"
+          },
+          "wrap_text": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Wrap text in the cell.",
+            "title": "Wrap Text"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "cell_range"
+        ],
+        "title": "format_cellsArguments",
+        "type": "object"
+      },
+      "name": "xlide_format_cells",
+      "title": "Format cells"
     },
     {
       "annotations": {

@@ -22,7 +22,9 @@ changed one would be a swap that broke a port:
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -87,6 +89,39 @@ def open_workbook(path: Path) -> Any:
         raise CellsError(f"{path.name} could not be opened: {exc}") from exc
 
 
+@contextlib.contextmanager
+def editing(path: Path) -> Iterator[Any]:
+    """Open a workbook, let the caller change it, save it.
+
+    Every write tool in this server goes through here rather than opening and
+    saving for itself, so that a save is never the step somebody forgot and a
+    failure half way through never leaves a saved file behind.
+    """
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    with open_workbook(path) as book:
+        yield book
+        try:
+            book.save()
+        except PyOfficeEditorError as exc:
+            raise CellsError(f"{path.name} could not be saved: {exc}") from exc
+        except PermissionError as exc:
+            raise CellsError(
+                f"{path.name} is locked, most likely open in Excel: {exc}. "
+                "Ask the user to close it."
+            ) from exc
+
+
+def sheet_named(book: Any, name: str) -> Any:
+    """A sheet by name, matched without case, or a refusal listing the real ones."""
+    wanted = (name or "").strip().casefold()
+    for sheet in book.sheets:
+        if sheet.name.casefold() == wanted:
+            return sheet
+    listed = ", ".join(book.sheet_names) or "(none)"
+    raise CellsError(f"No sheet named {name!r}. Sheets in this workbook: {listed}.")
+
+
 def sheets(path: Path) -> list[SheetInfo]:
     with open_workbook(path) as book:
         return [_sheet_info(sheet) for sheet in book.sheets]
@@ -102,7 +137,7 @@ def named_ranges(path: Path) -> list[NamedRange]:
 
 def read(path: Path, sheet_name: str, reference: str) -> ReadResult:
     with open_workbook(path) as book:
-        sheet = _sheet(book, sheet_name)
+        sheet = sheet_named(book, sheet_name)
         area = _range(sheet, reference)
         # Measured from the reference, before a single cell is built. Asking for
         # a quarter of a million cells should cost a refusal, not the memory to
@@ -138,7 +173,7 @@ def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -
         raise CellsError("data must be a list of rows, each row a list of cell values.")
 
     with open_workbook(path) as book:
-        sheet = _sheet(book, sheet_name)
+        sheet = sheet_named(book, sheet_name)
         width = max(len(row) for row in data)
         first = _cell_ref(sheet, start_cell)
         block = _block(first, len(data), width)
@@ -172,14 +207,42 @@ def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -
 # ------------------------------------------------------------------ the parts
 
 
-def _sheet(book: Any, name: str) -> Any:
-    """A sheet by name, matched without case, or a refusal listing the real ones."""
-    wanted = (name or "").strip().casefold()
-    for sheet in book.sheets:
-        if sheet.name.casefold() == wanted:
-            return sheet
-    listed = ", ".join(book.sheet_names) or "(none)"
-    raise CellsError(f"No sheet named {name!r}. Sheets in this workbook: {listed}.")
+def _hidden(sheet: Any) -> bool:
+    """Whether a sheet is hidden, however this pyOfficeEditor spells it.
+
+    `Worksheet.visible` arrives in 0.2. On 0.1.1 the state is only in the
+    workbook part, as `state="hidden"` on the sheet entry, so it is read from
+    there. Feature-detected rather than version-detected: the moment the
+    attribute exists this stops touching XML, with no pin to remember.
+
+    A sheet is hidden whether it is hidden or very hidden. An agent asking which
+    sheets are hidden means both, and the difference is only how hard Excel
+    makes it to unhide.
+    """
+    visible = getattr(sheet, "visible", None)
+    if visible is not None:
+        return str(getattr(visible, "value", visible)).lower() != "visible"
+    try:
+        entry = _sheet_entry(sheet)
+    except Exception:
+        return False
+    return entry in {"hidden", "veryhidden"}
+
+
+def _sheet_entry(sheet: Any) -> str:
+    """The `state` attribute on this sheet's entry in the workbook part."""
+    import re
+
+    book = sheet.workbook
+    xml = book.package.xml(book.workbook_part).text
+    for match in re.finditer(r"<sheet\b[^>]*>", xml):
+        markup = match.group(0)
+        name = re.search(r'\bname="([^"]*)"', markup)
+        if name is None or name.group(1) != sheet.name:
+            continue
+        state = re.search(r'\bstate="([^"]*)"', markup)
+        return state.group(1).strip().lower() if state else "visible"
+    return "visible"
 
 
 def _sheet_info(sheet: Any) -> SheetInfo:
@@ -187,9 +250,7 @@ def _sheet_info(sheet: Any) -> SheetInfo:
     return SheetInfo(
         name=sheet.name,
         used_range=str(used) if used is not None else "",
-        # A sheet is hidden whether it is hidden or very hidden, and an agent
-        # asking which sheets are hidden means both.
-        hidden=str(getattr(sheet.visible, "value", sheet.visible)).lower() != "visible",
+        hidden=_hidden(sheet),
     )
 
 

@@ -144,7 +144,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             Field(default="", description="One worksheet. Empty lists every sheet's shapes."),
         ] = "",
     ) -> dict[str, Any]:
-        path = _excel_path(file_path, settings)
+        path = excel_with_sheets(file_path, settings)
         from ..shapes import read_sheet_shapes
 
         by_sheet = read_sheet_shapes(path, sheet.strip() or None)
@@ -208,7 +208,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         ],
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_set_shape_macro")
-        path = _excel_path(file_path, settings)
+        path = excel_with_sheets(file_path, settings)
         from ..shapes import set_shape_macro as write_macro
 
         result = write_macro(path, sheet, shape_name, macro)
@@ -289,8 +289,12 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
 
-def _excel_path(raw: str, settings: Settings) -> Path:
-    """An Excel file whose grid the package reader can open."""
+def excel_with_sheets(raw: str, settings: Settings) -> Path:
+    """An Excel file whose grid the package reader can open.
+
+    Public because every tool that edits the document surface needs the same
+    gate, and a second copy of it would be a second set of refusal messages.
+    """
     path, info = _any_excel(raw, settings)
     if not info.supports_sheets:
         raise ToolError(
