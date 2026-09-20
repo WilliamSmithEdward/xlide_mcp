@@ -3,6 +3,25 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [1.0.2]
+
+A findable name in the MCP registry. No behaviour change: the tool surface, the
+conformance corpus and the contract digest are identical to 1.0.0.
+
+- The registry listing is now
+  `io.github.WilliamSmithEdward/xlide-excel-office-vba-mcp`. Registry search
+  matches the name and nothing else, so the 1.0.1 listing was invisible to
+  anyone searching for excel, office or vba, which is everyone who wants this.
+  Measured before changing it: `vba` returned two servers, both matching on
+  substrings of somebody's username, and neither was this one.
+- The `server.json` name and the `mcp-name` marker in the PyPI description move
+  together, because the registry proves ownership by finding the second inside
+  the first's package.
+
+The 1.0.1 listing under `xlide-mcp` stays where it is. The registry cannot
+unpublish a server yet, so it remains, frozen at 1.0.1, pointing at the same
+package.
+
 ## [1.0.1]
 
 Registry metadata. No behaviour change: the tool surface, the conformance corpus
@@ -96,5 +115,6 @@ cells and document surface inside Office files, and for Visual Basic 6 projects.
 - The document surface is Excel only. Word, PowerPoint and Access reach their
   VBA, forms and catalogs, and their document surfaces follow pyOfficeEditor.
 
+[1.0.2]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.2
 [1.0.1]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.0

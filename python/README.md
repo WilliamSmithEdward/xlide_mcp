@@ -3,7 +3,7 @@
 <!-- The MCP registry proves ownership of a PyPI package by finding this
      string in the published description. It must match `name` in the
      repository's server.json. -->
-<!-- mcp-name: io.github.WilliamSmithEdward/xlide-mcp -->
+<!-- mcp-name: io.github.WilliamSmithEdward/xlide-excel-office-vba-mcp -->
 
 **An MCP server for the code inside Office files.** The VBA, the UserForms, the
 Power Query and the worksheet cells in Excel, Word, PowerPoint and Access
