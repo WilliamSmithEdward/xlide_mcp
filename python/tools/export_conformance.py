@@ -1595,6 +1595,189 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    # ------------------------------------------- the rest of the document surface
+    out.append(
+        case(
+            "manage-sheet.renaming-takes-the-formulas-with-it",
+            "A sheet rename that left formulas naming the old sheet produces a workbook that "
+            "opens broken. The references follow, and a name with a space comes back quoted, "
+            "because Excel cannot parse it otherwise.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_sheet",
+                    {"file_path": "${fixture}", "action": "add", "sheet": "Data"},
+                ),
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [["=SUM(Data!A1:A5)"]],
+                    },
+                ),
+                step(
+                    "xlide_manage_sheet",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "rename",
+                        "sheet": "Data",
+                        "new_name": "Q1 Data",
+                    },
+                ),
+                step(
+                    "xlide_read_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "cell_range": "A1",
+                        "include": "formulas",
+                    },
+                ),
+            ],
+            [{"path": "formulas[0][0]", "equals": "=SUM('Q1 Data'!A1:A5)"}],
+        )
+    )
+    out.append(
+        case(
+            "manage-sheet.hiding-the-last-visible-sheet-is-refused",
+            "Excel refuses to open a workbook whose sheets are all hidden. The refusal belongs "
+            "where it can still be explained rather than at the point the user cannot open "
+            "their own file.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_sheet",
+                    {"file_path": "${fixture}", "action": "hide", "sheet": "Sheet1"},
+                    error_contains="only visible sheet",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "manage-rows-columns.inserting-moves-what-is-below",
+            "Every reference in the workbook moves with an inserted row, exactly as Excel does "
+            "it. An implementation that inserted cells without moving references would produce "
+            "a workbook whose totals silently point at the wrong rows.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [[10], [20], ["=SUM(A1:A2)"]],
+                    },
+                ),
+                step(
+                    "xlide_manage_rows_columns",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "action": "insert",
+                        "which": "rows",
+                        "first": 1,
+                        "count": 2,
+                    },
+                ),
+                step(
+                    "xlide_read_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "cell_range": "A5",
+                        "include": "formulas",
+                    },
+                ),
+            ],
+            [{"path": "formulas[0][0]", "equals": "=SUM(A3:A4)"}],
+        )
+    )
+    out.append(
+        case(
+            "manage-validation.a-typed-out-list-is-quoted-and-a-reference-is-not",
+            "Excel stores an inline dropdown as one quoted comma-separated string and a "
+            "cell-driven one as a bare reference. Sending either in the other's shape gives a "
+            "dropdown that is empty or shows the formula, and the workbook still opens, so "
+            "nothing says it is wrong.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_validation",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "action": "add",
+                        "cell_range": "C1:C9",
+                        "kind": "list",
+                        "formula1": "Red,Green,Blue",
+                    },
+                )
+            ],
+            [{"path": "formula1", "equals": '"Red,Green,Blue"'}],
+        )
+    )
+    out.append(
+        case(
+            "manage-conditional-format.a-rule-with-no-paint-is-refused",
+            "Excel stores a rule that highlights nothing without complaint, so the caller who "
+            "forgot the colour finds out only by looking. Saying so is more use than saving it.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_conditional_format",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "action": "add",
+                        "cell_range": "B2:B3",
+                        "rule": "cell_is",
+                        "operator": "greaterThan",
+                        "value": "100",
+                    },
+                    error_contains="highlights nothing",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "manage-table.columns-come-from-the-header-row",
+            "A table names a block so a formula can say Sales[Amount] instead of an address "
+            "that breaks when rows move. The column names are the header row's, not something "
+            "the caller has to repeat.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Sheet1",
+                        "start_cell": "A1",
+                        "data": [["Region", "Amount"], ["North", 120]],
+                    },
+                ),
+                step(
+                    "xlide_manage_table",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "add",
+                        "sheet": "Sheet1",
+                        "table_name": "Sales",
+                        "cell_range": "A1:B2",
+                    },
+                ),
+            ],
+            [
+                {"path": "columns[0]", "equals": "Region"},
+                {"path": "columns[1]", "equals": "Amount"},
+            ],
+        )
+    )
+
     # ------------------------------------------------------------ git changes
     out.append(
         case(

@@ -81,7 +81,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             "process that has opened the Visual Basic Editor with the add-in loaded. Use it to "
             "find out whether the user has a live editor before asking about what is on their "
             "screen. Windows only, and the add-in's local API has to be switched on by the "
-            "user. Each session is probed, not just listed, because a discovery file outlives "
+            "user. Each session is probed before it is listed, because a discovery file outlives "
             "the process that wrote it."
         ),
     )

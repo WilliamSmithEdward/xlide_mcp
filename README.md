@@ -24,17 +24,16 @@ xlide_run_tests      Budget.xlsm   -> 12 passed
 
 ## Why
 
-An agent asked to fix a macro has, until now, had two bad options: work from a
-copied snippet with no idea what else is in the project, or ask the user to
-export the modules and paste them back afterwards. Both treat the Office file as
-opaque. It is not: the VBA project, the form designs and the M code are all
-readable and writable without opening the application at all.
+An agent asked to fix a macro works from a copied snippet with no idea what else
+is in the project, or asks the user to export the modules and paste them back
+afterwards. Both treat the Office file as opaque. The VBA project, the form
+designs and the M code are all readable and writable without opening the
+application at all.
 
-This server is the surface that makes that reachable, and it sets the rules that
-stop it being dangerous: a write is refused if the module changed since it was
-read, analysis is a build gate rather than a suggestion, a run happens in an
-application the server owns and holds a deadline over, and everything that cannot
-be undone is the user's decision rather than the agent's.
+This server makes that reachable, and bounds it. A write is refused if the
+module changed since it was read. An analysis error fails the change. A run
+happens in an application the server created and holds a deadline over. Anything
+that cannot be undone is the user's decision.
 
 ## Implementations
 
@@ -111,6 +110,9 @@ each one has the Trust Center setting that module injection needs.
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_manage_form`, `xlide_edit_form` |
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` (set, rename, remove, load, unload) |
 | Cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_format_cells` |
+| Workbook structure | `xlide_manage_sheet`, `xlide_manage_rows_columns` |
+| Tables and names | `xlide_manage_table`, `xlide_manage_name` |
+| Rules and links | `xlide_manage_validation`, `xlide_manage_conditional_format`, `xlide_manage_hyperlink`, `xlide_page_setup` |
 | Shapes | `xlide_list_shapes`, `xlide_set_shape_macro` |
 | Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
 
@@ -134,7 +136,7 @@ session inside the Visual Basic Editor.
 | Visual Basic 6 | `.vbp` | - | - |
 
 A recognized extension outside those sets is listed with the reason it cannot be
-opened, rather than left silently out of a listing.
+opened. Nothing drops out of a listing without saying why.
 
 A `.xlsb` keeps its grid in binary records and a `.xls` inside a compound file,
 neither of them OOXML. On Windows with Excel, those go through Excel, and the
@@ -181,8 +183,8 @@ Comparing two revisions of a workbook therefore shows VBA. The Source Control
 panel's working-tree diff does not: the right-hand side there is the file on
 disk, still binary.
 
-Both routes render VBA, Power Query and the sheet inventory, and the first line
-of every rendered file says that cell values are not included, because a reader
+Both routes render VBA, Power Query and the sheet inventory. Cell values are not
+included, and the first line of every rendered file says so, because a reader
 who does not know the scope takes an empty diff for an unchanged workbook. git
 still stores the blob either way, so merges stay binary.
 

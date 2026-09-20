@@ -1,9 +1,9 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:2b0f3c5cb8f3807fd20af9600a50ec070804f7d1b6a99538d519e309cae2738e",
+  "digest": "sha256:4a9272037e2b0c41ffe3f2785125edcc76af5197abc9f994551b4c17284a6864",
   "generated_with": {
     "upstream": {
-      "pyOfficeEditor": "0.2.1",
+      "pyOfficeEditor": "0.2.2",
       "pyOpenVBA": "6.0.0",
       "pyvbaanalysis": "2.1.1",
       "pyvbaharness": "not installed"
@@ -14,7 +14,7 @@
     "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 41,
+  "tool_count": 49,
   "tools": [
     {
       "annotations": {
@@ -954,7 +954,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the running xlide_vbide sessions this machine can reach: one per Office process that has opened the Visual Basic Editor with the add-in loaded. Use it to find out whether the user has a live editor before asking about what is on their screen. Windows only, and the add-in's local API has to be switched on by the user. Each session is probed, not just listed, because a discovery file outlives the process that wrote it.",
+      "description": "Lists the running xlide_vbide sessions this machine can reach: one per Office process that has opened the Visual Basic Editor with the add-in loaded. Use it to find out whether the user has a live editor before asking about what is on their screen. Windows only, and the add-in's local API has to be switched on by the user. Each session is probed before it is listed, because a discovery file outlives the process that wrote it.",
       "input_schema": {
         "properties": {},
         "title": "live_sessionsArguments",
@@ -984,6 +984,103 @@
       },
       "name": "xlide_live_state",
       "title": "Live editor state"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Lists, adds or clears conditional formatting: the rules that colour cells by what is in them. rule='cell_is' with an operator and a value paints cells that compare true; rule='expression' takes a formula written for the top-left cell of the range and applied relatively, the way Excel's 'Use a formula' box works; rule='color_scale' and 'data_bar' are the gradient and in-cell bar. The paint itself is the fill and font arguments, which is what Excel calls a differential format.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, add or clear.",
+            "title": "Action",
+            "type": "string"
+          },
+          "bold": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Make matching cells bold.",
+            "title": "Bold"
+          },
+          "cell_range": {
+            "default": "",
+            "description": "For add and clear: the range. Empty clears the whole sheet.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "fill_color": {
+            "default": "",
+            "description": "Fill to paint matching cells, as hex.",
+            "title": "Fill Color",
+            "type": "string"
+          },
+          "font_color": {
+            "default": "",
+            "description": "Text colour for matching cells, as hex.",
+            "title": "Font Color",
+            "type": "string"
+          },
+          "formula": {
+            "default": "",
+            "description": "For expression: a formula for the range's top-left cell.",
+            "title": "Formula",
+            "type": "string"
+          },
+          "operator": {
+            "default": "greaterThan",
+            "description": "For cell_is: greaterThan, between, etc.",
+            "title": "Operator",
+            "type": "string"
+          },
+          "other_value": {
+            "default": "",
+            "description": "For cell_is with between: the second value.",
+            "title": "Other Value",
+            "type": "string"
+          },
+          "rule": {
+            "default": "cell_is",
+            "description": "cell_is, expression, color_scale or data_bar.",
+            "title": "Rule",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "value": {
+            "default": "",
+            "description": "For cell_is: the value compared against.",
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet"
+        ],
+        "title": "manage_conditional_formatArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_conditional_format",
+      "title": "Conditional formatting"
     },
     {
       "annotations": {
@@ -1062,6 +1159,410 @@
       },
       "name": "xlide_manage_form",
       "title": "Create, rename or delete a form"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Lists, adds or removes hyperlinks on a worksheet. A link either goes out to a target, which is a URL or a file path, or inside the workbook to a location such as 'Summary!A1'. Pass one or the other. The cell's displayed text is separate from the link and is left alone unless you pass display.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, add or remove.",
+            "title": "Action",
+            "type": "string"
+          },
+          "cell_range": {
+            "default": "",
+            "description": "For add and remove: the cell or range.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "display": {
+            "default": "",
+            "description": "For add: text to put in the cell.",
+            "title": "Display",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "location": {
+            "default": "",
+            "description": "For add: a place in this workbook, like Summary!A1.",
+            "title": "Location",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "description": "For add: a URL or file path to open.",
+            "title": "Target",
+            "type": "string"
+          },
+          "tooltip": {
+            "default": "",
+            "description": "For add: the hover text.",
+            "title": "Tooltip",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet"
+        ],
+        "title": "manage_hyperlinkArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_hyperlink",
+      "title": "Hyperlinks"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Lists, adds or removes a workbook's defined names. A defined name is what lets a formula say TaxRate rather than Config!$B$7, and VBA reads them too, so renaming or removing one can break code as well as formulas. action='list' changes nothing. refers_to is a formula, so it needs its sheet and its dollar signs: Data!$A$1:$A$50.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, add or remove.",
+            "title": "Action",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "description": "For add and remove: the defined name.",
+            "title": "Name",
+            "type": "string"
+          },
+          "refers_to": {
+            "default": "",
+            "description": "For add: what it points at, such as Data!$A$1:$A$50.",
+            "title": "Refers To",
+            "type": "string"
+          },
+          "scope": {
+            "default": "",
+            "description": "A sheet name to scope it to that sheet. Empty means the workbook.",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "manage_nameArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_name",
+      "title": "Defined names"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Inserts, deletes, resizes, hides, shows, groups or ungroups whole rows or columns. Inserting and deleting move every reference in the workbook with them: a formula pointing below an inserted row follows it, and one pointing into deleted cells becomes #REF!, exactly as Excel does it. Deleting has no undo, so ask the user first. Widths are in characters and heights in points, which is what Excel's own dialogs use. Works on .xlsx, .xlsm and .xlam.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "insert, delete, resize, hide, show, group or ungroup.",
+            "title": "Action",
+            "type": "string"
+          },
+          "collapsed": {
+            "default": false,
+            "description": "For group: start the new group collapsed.",
+            "title": "Collapsed",
+            "type": "boolean"
+          },
+          "count": {
+            "default": 1,
+            "description": "How many, counting from first.",
+            "minimum": 1,
+            "title": "Count",
+            "type": "integer"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "first": {
+            "description": "First row or column, 1-based. Column A is 1.",
+            "minimum": 1,
+            "title": "First",
+            "type": "integer"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "size": {
+            "default": -1,
+            "description": "For resize: column width in characters, or row height in points. -1 restores the sheet default.",
+            "title": "Size",
+            "type": "number"
+          },
+          "which": {
+            "description": "'rows' or 'columns'.",
+            "title": "Which",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "action",
+          "which",
+          "first"
+        ],
+        "title": "manage_rows_columnsArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_rows_columns",
+      "title": "Insert, delete or size rows and columns"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Adds, removes, renames, moves, hides, shows, protects or unprotects a worksheet. Renaming rewrites the formulas and defined names that referred to the old name, so nothing breaks. Removing a sheet takes its cells, tables and everything on it, and formulas elsewhere that pointed at it become #REF!, which has no undo: ask the user first. Protecting a sheet stops editing in Excel; it is not a security boundary and the password is trivially recovered. Works on .xlsx, .xlsm, .xlam.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "add, remove, rename, move, hide, show, protect or unprotect.",
+            "title": "Action",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "index": {
+            "default": -1,
+            "description": "For add and move: 0-based position. -1 means the end.",
+            "title": "Index",
+            "type": "integer"
+          },
+          "new_name": {
+            "default": "",
+            "description": "For rename: the new name.",
+            "title": "New Name",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "description": "For protect: an optional password. Excel's sheet password is obfuscation, not encryption, so do not use one the user relies on elsewhere.",
+            "title": "Password",
+            "type": "string"
+          },
+          "sheet": {
+            "default": "",
+            "description": "The sheet to act on. For add, the name to give the new one.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "very_hidden": {
+            "default": false,
+            "description": "For hide: hide it so that Excel's own Unhide dialog does not list it. Only the VBA editor can bring it back.",
+            "title": "Very Hidden",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path",
+          "action"
+        ],
+        "title": "manage_sheetArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_sheet",
+      "title": "Add, remove or change a worksheet"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Lists, adds or removes Excel tables, the ListObjects that Ctrl+T creates. A table names a block so formulas can say Sales[Amount] instead of an address that breaks when rows move, and it is what a Power Query load writes into. action='list' reads them and changes nothing. Adding one takes the column names from the header row of the range you give. Removing one leaves the cells and takes the table, so structured references to it break.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, add or remove.",
+            "title": "Action",
+            "type": "string"
+          },
+          "cell_range": {
+            "default": "",
+            "description": "For add: the range including its header row, such as A1:D20.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "sheet": {
+            "default": "",
+            "description": "Worksheet. Empty lists every sheet's tables.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "table_name": {
+            "default": "",
+            "description": "For add and remove: the table's name.",
+            "title": "Table Name",
+            "type": "string"
+          },
+          "totals_row": {
+            "default": false,
+            "description": "For add: give the table a totals row.",
+            "title": "Totals Row",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "manage_tableArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_table",
+      "title": "Excel tables"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Lists, adds or clears data validation: what a cell will accept, and the dropdown it shows. kind='list' with formula1 as a comma-separated set of values gives a dropdown; kind='list' with a range reference gives one driven by cells. The other kinds take an operator and one or two formulas, which may be literals or references. Validation stops typing in Excel, not writing through this server, and Excel does not re-check cells that already held a value.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, add or clear.",
+            "title": "Action",
+            "type": "string"
+          },
+          "allow_blank": {
+            "default": true,
+            "description": "Let the cell be left empty.",
+            "title": "Allow Blank",
+            "type": "boolean"
+          },
+          "cell_range": {
+            "default": "",
+            "description": "For add and clear: the range. Empty clears the whole sheet.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "error_message": {
+            "default": "",
+            "description": "What Excel says when the entry is refused.",
+            "title": "Error Message",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "formula1": {
+            "default": "",
+            "description": "The allowed values. For kind='list', either 'Red,Green,Blue' or a range like $H$1:$H$9. For the others, the bound, such as 0.",
+            "title": "Formula1",
+            "type": "string"
+          },
+          "formula2": {
+            "default": "",
+            "description": "The second bound, for between and notBetween.",
+            "title": "Formula2",
+            "type": "string"
+          },
+          "kind": {
+            "default": "list",
+            "description": "whole, decimal, list, date, time, textLength or custom.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "operator": {
+            "default": "between",
+            "description": "between, greaterThan, lessThan and so on.",
+            "title": "Operator",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet"
+        ],
+        "title": "manage_validationArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_validation",
+      "title": "Data validation"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reads how a worksheet is set up to print: orientation, paper size, margins, the print area, the rows or columns repeated on every page, whether it is scaled to fit, and the header and footer. Call it when asked why a sheet prints the way it does, or before changing a layout somebody set up deliberately.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet"
+        ],
+        "title": "page_setupArguments",
+        "type": "object"
+      },
+      "name": "xlide_page_setup",
+      "title": "How a sheet prints"
     },
     {
       "annotations": {

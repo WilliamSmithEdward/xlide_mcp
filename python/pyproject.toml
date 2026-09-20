@@ -52,7 +52,7 @@ dependencies = [
     # pre-1.0, where a minor may move the API; pyOpenVBA 6 changed enough from 5
     # to earn a major. Raising either is the documented sync step: bump, run the
     # suite, fix what broke, regenerate the contract.
-    "pyOfficeEditor>=0.2.1,<0.3",
+    "pyOfficeEditor>=0.2.2,<0.3",
     "pyvbaanalysis>=1.2",
 ]
 

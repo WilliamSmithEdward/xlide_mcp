@@ -20,11 +20,11 @@ xlide_run_tests      Budget.xlsm   -> 12 passed
 
 ## Why
 
-An agent asked to fix a macro has had two bad options: work from a copied snippet
-with no idea what else is in the project, or ask the user to export the modules
-and paste them back afterwards. Both treat the Office file as opaque. It is not:
-the VBA project, the form designs and the M code are all readable and writable
-without opening the application at all.
+An agent asked to fix a macro works from a copied snippet with no idea what else
+is in the project, or asks the user to export the modules and paste them back
+afterwards. Both treat the Office file as opaque. The VBA project, the form
+designs and the M code are all readable and writable without opening the
+application at all.
 
 ## Install
 
@@ -112,6 +112,9 @@ whether each has the Trust Center setting that module injection needs.
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_manage_form`, `xlide_edit_form` |
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` |
 | Cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_format_cells` |
+| Workbook structure | `xlide_manage_sheet`, `xlide_manage_rows_columns` |
+| Tables and names | `xlide_manage_table`, `xlide_manage_name` |
+| Rules and links | `xlide_manage_validation`, `xlide_manage_conditional_format`, `xlide_manage_hyperlink`, `xlide_page_setup` |
 | Shapes | `xlide_list_shapes`, `xlide_set_shape_macro` |
 | Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
 
@@ -137,7 +140,7 @@ the Visual Basic Editor.
 | Visual Basic 6 | `.vbp` | - | - |
 
 A recognized extension outside those sets is listed with the reason it cannot be
-opened, rather than left silently out of a listing.
+opened. Nothing drops out of a listing without saying why.
 
 ## Seeing what changed
 

@@ -35,7 +35,7 @@ a format discovery lands.
 3. **The workspace boundary.** Path arguments resolve, symlinks and all, before
    the containment check. Two conformance cases cover it and they are the two
    worth failing the build over.
-4. **The same refusals.** 18 of the 71 conformance cases assert a failure
+4. **The same refusals.** 20 of the 77 conformance cases assert a failure
    message. A port that succeeds where the contract refuses has a different
    product, not a lenient one.
 

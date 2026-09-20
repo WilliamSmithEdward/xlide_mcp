@@ -71,7 +71,11 @@ def call(settings: Settings) -> Callable[..., Any]:
     """Call a tool by name and get its structured result, or raise ToolFailure."""
     server = build_server(settings)
 
-    def invoke(name: str, **arguments: Any) -> Any:
+    # The tool name is positional-only. A real client sends arguments as a dict,
+    # so a tool is free to have an argument called `name`; without the slash the
+    # harness would collide with it and the API would end up shaped around the
+    # test rather than the caller.
+    def invoke(name: str, /, **arguments: Any) -> Any:
         try:
             result = asyncio.run(server.call_tool(name, arguments))
         except ToolError as exc:
