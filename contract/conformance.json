@@ -43,6 +43,29 @@
         "attributes": "*.xlsm binary"
       }
     },
+    "access_database": {
+      "kind": "access-database",
+      "file_name": "App.accdb",
+      "why": "The host that is different. Access keeps its VBA in the database rather than a vbaProject.bin, its container class releases differently, its save takes no signature flag, and it spells a module's kind as a string where the package hosts give an enum. Every one of those differences was a real defect first.",
+      "modules": [
+        {
+          "name": "Helpers",
+          "kind": "standard",
+          "source": "Option Compare Database\r\nOption Explicit\r\n\r\nPublic Function Twice(ByVal n As Long) As Long\r\n    Twice = n * 2\r\nEnd Function\r\n"
+        }
+      ],
+      "tables": [
+        {
+          "name": "Orders",
+          "columns": [
+            {
+              "name": "Id",
+              "type": "long"
+            }
+          ]
+        }
+      ]
+    },
     "shapes_workbook": {
       "kind": "shipped-binary",
       "file_name": "Shapes.xlsm",
@@ -62,7 +85,7 @@
       ]
     }
   },
-  "case_count": 42,
+  "case_count": 46,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -993,6 +1016,112 @@
         {
           "path": "plan",
           "at_least": 1
+        }
+      ]
+    },
+    {
+      "id": "access.a-standard-module-is-classified-standard",
+      "why": "An Access module carries no designer header, so its text cannot say whether it is a class, and Access spells the kind as a string where the package hosts give an enum. Comparing against only the enum reports every standard module in every database as a class, which then exports it as .cls and analyzes it as one.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "access_database",
+      "expect": [
+        {
+          "path": "host",
+          "equals": "access"
+        },
+        {
+          "path": "modules",
+          "contains": "\"kind\": \"standard\""
+        }
+      ]
+    },
+    {
+      "id": "access.a-module-round-trips",
+      "why": "Access writes into the database as the edit is made and its save takes no signature flag, so the write path that works for a package host is not the one that works here.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers"
+          }
+        },
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Compare Database\r\nOption Explicit\r\n\r\nPublic Function Twice(ByVal n As Long) As Long\r\n    Twice = n * 3\r\nEnd Function\r\n",
+            "expected_content_token": "${step[0].content_token}"
+          }
+        },
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers"
+          }
+        }
+      ],
+      "fixture": "access_database",
+      "expect": [
+        {
+          "path": "source",
+          "contains": "n * 3"
+        }
+      ]
+    },
+    {
+      "id": "access.signature-state-is-unknown-rather-than-false",
+      "why": "Access keeps its VBA in the database, not in the streams beside a vbaProject.bin where this server looks for a signature. Answering false would be a claim nothing checked.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_project_info",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "access_database",
+      "expect": [
+        {
+          "path": "digitally_signed",
+          "type": "null"
+        }
+      ]
+    },
+    {
+      "id": "access.the-catalog-reads-tables-and-queries",
+      "why": "An .accdb is an application rather than a document, and its VBA is written against tables that reading the modules alone never shows.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_access_catalog",
+          "arguments": {
+            "file_path": "${fixture}",
+            "include": "tables"
+          }
+        }
+      ],
+      "fixture": "access_database",
+      "expect": [
+        {
+          "path": "tables",
+          "contains": "\"name\": \"Orders\""
+        },
+        {
+          "path": "tables",
+          "not_contains": "MSys"
         }
       ]
     },

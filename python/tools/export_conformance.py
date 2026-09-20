@@ -56,6 +56,18 @@ HELPERS = CRLF.join(
     ]
 )
 
+ACCESS_MODULE = CRLF.join(
+    [
+        "Option Compare Database",
+        "Option Explicit",
+        "",
+        "Public Function Twice(ByVal n As Long) As Long",
+        "    Twice = n * 2",
+        "End Function",
+        "",
+    ]
+)
+
 BROKEN = CRLF.join(
     [
         "Option Explicit",
@@ -98,6 +110,20 @@ FIXTURES: dict[str, Any] = {
         ),
         "modules": [{"name": "Helpers", "kind": "standard", "source": HELPERS}],
         "git": {"commit_message": "the workbook as it was", "attributes": "*.xlsm binary"},
+    },
+    "access_database": {
+        "kind": "access-database",
+        "file_name": "App.accdb",
+        "why": (
+            "The host that is different. Access keeps its VBA in the database rather than a "
+            "vbaProject.bin, its container class releases differently, its save takes no "
+            "signature flag, and it spells a module's kind as a string where the package "
+            "hosts give an enum. Every one of those differences was a real defect first."
+        ),
+        "modules": [{"name": "Helpers", "kind": "standard", "source": ACCESS_MODULE}],
+        "tables": [
+            {"name": "Orders", "columns": [{"name": "Id", "type": "long"}]},
+        ],
     },
     "shapes_workbook": {
         "kind": "shipped-binary",
@@ -873,6 +899,76 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "applied", "equals": False},
                 {"path": "plan", "at_least": 1},
+            ],
+        )
+    )
+
+    # ----------------------------------------------------------------- access
+    out.append(
+        case(
+            "access.a-standard-module-is-classified-standard",
+            "An Access module carries no designer header, so its text cannot say whether it "
+            "is a class, and Access spells the kind as a string where the package hosts give "
+            "an enum. Comparing against only the enum reports every standard module in every "
+            "database as a class, which then exports it as .cls and analyzes it as one.",
+            "access_database",
+            [step("xlide_list_modules", {"file_path": "${fixture}"})],
+            [
+                {"path": "host", "equals": "access"},
+                {"path": "modules", "contains": '"kind": "standard"'},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "access.a-module-round-trips",
+            "Access writes into the database as the edit is made and its save takes no "
+            "signature flag, so the write path that works for a package host is not the one "
+            "that works here.",
+            "access_database",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": ACCESS_MODULE.replace("n * 2", "n * 3"),
+                        "expected_content_token": "${step[0].content_token}",
+                    },
+                ),
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+            ],
+            [{"path": "source", "contains": "n * 3"}],
+        )
+    )
+    out.append(
+        case(
+            "access.signature-state-is-unknown-rather-than-false",
+            "Access keeps its VBA in the database, not in the streams beside a "
+            "vbaProject.bin where this server looks for a signature. Answering false would "
+            "be a claim nothing checked.",
+            "access_database",
+            [step("xlide_project_info", {"file_path": "${fixture}"})],
+            [{"path": "digitally_signed", "type": "null"}],
+        )
+    )
+    out.append(
+        case(
+            "access.the-catalog-reads-tables-and-queries",
+            "An .accdb is an application rather than a document, and its VBA is written "
+            "against tables that reading the modules alone never shows.",
+            "access_database",
+            [step("xlide_access_catalog", {"file_path": "${fixture}", "include": "tables"})],
+            [
+                {"path": "tables", "contains": '"name": "Orders"'},
+                {"path": "tables", "not_contains": "MSys"},
             ],
         )
     )

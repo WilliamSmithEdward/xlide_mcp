@@ -98,7 +98,6 @@ def read_modules(handle: Any, info: HostInfo) -> list[ModuleView]:
     from pyopenvba.vba import split_attribute_header
     from pyvbaanalysis.reader import classify_module_kind
 
-    standard_kind = pyopenvba.VBAModuleKind.standard
     views: list[ModuleView] = []
     for component in _components(handle):
         try:
@@ -111,7 +110,7 @@ def read_modules(handle: Any, info: HostInfo) -> list[ModuleView]:
         kind = classify_module_kind(
             source,
             extension=info.extension,
-            pyopenvba_standard=(component.kind == standard_kind),
+            pyopenvba_standard=is_standard_component(component),
         )
         # The attribute header is what the VBE hides, so the body is what an agent
         # should be reading and editing. pyvbaanalysis keeps attributes instead,
@@ -128,6 +127,23 @@ def read_modules(handle: Any, info: HostInfo) -> list[ModuleView]:
             )
         )
     return views
+
+
+def is_standard_component(component: Any) -> bool:
+    """Whether a component is a standard module, whichever host it came from.
+
+    The two hosts spell it differently, and comparing against only one of them is
+    how every Access standard module came back classified as a class: a package
+    host gives a `VBAModuleKind` enum, and Access gives the string `"module"`.
+    An Access module carries no designer header, so the text cannot settle it and
+    this is the only thing that can.
+    """
+    import pyopenvba
+
+    kind = component.kind
+    if isinstance(kind, str):
+        return kind.casefold() == "module"
+    return bool(kind == pyopenvba.VBAModuleKind.standard)
 
 
 def find_module(modules: list[ModuleView], name: str) -> ModuleView:
@@ -172,13 +188,17 @@ def save(
     """
     import pyopenvba
 
+    # A signature lives in the streams beside a vbaProject.bin, which an Access
+    # database does not have, so its save takes no such flag and passing one is a
+    # TypeError rather than a refusal.
+    options: dict[str, Any] = {"allow_protected": allow_protected}
+    if info.host != "access":
+        options["allow_invalidate_signature"] = allow_invalidate_signature
+
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
-            handle.save(
-                allow_protected=allow_protected,
-                allow_invalidate_signature=allow_invalidate_signature,
-            )
+            handle.save(**options)
         except pyopenvba.VBAProjectError as exc:
             raise _save_refusal(exc, info) from exc
         except PermissionError as exc:

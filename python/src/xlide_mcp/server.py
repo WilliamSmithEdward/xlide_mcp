@@ -21,6 +21,7 @@ from .config import Settings
 from .instructions import SERVER_INSTRUCTIONS
 from .tools import (
     analysis,
+    catalog,
     discovery,
     execution,
     forms,
@@ -36,6 +37,7 @@ _REGISTRARS = (
     discovery.register,
     modules.register,
     analysis.register,
+    catalog.register,
     forms.register,
     powerquery.register,
     sheets.register,

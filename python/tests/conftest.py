@@ -174,3 +174,25 @@ def shapes_workbook(workspace: Path) -> Path:
     target = workspace / "Shapes.xlsm"
     shutil.copy2(source, target)
     return target
+
+
+ACCESS_MODULE = """Option Compare Database
+Option Explicit
+
+Public Function Twice(ByVal n As Long) As Long
+    Twice = n * 2
+End Function
+"""
+
+
+@pytest.fixture
+def access_database(workspace: Path) -> Path:
+    """The host that is different: VBA in the database, not in a package."""
+    import pyopenvba
+
+    path = workspace / "App.accdb"
+    with pyopenvba.AccessDatabase.create_new(path) as db:
+        db.create_table("Orders", [pyopenvba.ColumnSpec("Id", "long")])
+        db.vba_project().add_module("Helpers", ACCESS_MODULE.replace("\n", "\r\n"))
+        db.save()
+    return path

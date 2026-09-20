@@ -51,6 +51,7 @@ src/xlide_mcp/
     discovery.py    list, summarize, validate, create, doctor
     modules.py      read, write, rename, delete, search, list procedures
     analysis.py     the build gate, and the rule catalogue
+    catalog.py      project references, and an Access database's tables
     forms.py        UserForm and Access designs
     powerquery.py   the M code beside the VBA
     sheets.py       cells, formulas, and the shapes on a sheet
@@ -70,7 +71,7 @@ live layer needs the VBE add-in running.
 ## Test
 
 ```bash
-python -m pytest                 # 150 tests, no Office needed
+python -m pytest                 # 171 tests, no Office needed
 python -m pytest -m live         # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

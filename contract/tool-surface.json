@@ -1,6 +1,6 @@
 {
   "contract_version": "0.1.0",
-  "digest": "sha256:14e89fd50889485e5c976b05e5720977a19d1b98de10e75a2b2de625f8e8a901",
+  "digest": "sha256:d78765a6437ea4d06feffb4f3cea57a7079a2a2a88a65b93e68520cb8fe27b23",
   "generated_with": {
     "upstream": {
       "pyOpenVBA": "5.2.4",
@@ -13,8 +13,44 @@
     "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 36,
+  "tool_count": 38,
   "tools": [
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists what an Access database holds besides its code: tables with their columns, saved queries with their SQL, and the relationships between tables. An .accdb is an application rather than a document, and the VBA in it is written against these, so reading the modules alone shows half of it. Access files only.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Access database.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "include": {
+            "default": "all",
+            "description": "'tables', 'queries', 'relationships' or 'all'.",
+            "title": "Include",
+            "type": "string"
+          },
+          "include_system": {
+            "default": false,
+            "description": "Include the MSys tables and relationships Access keeps its own objects in. Off by default: every database has them, and listing them buries the few that are about the user's data.",
+            "title": "Include System",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "access_catalogArguments",
+        "type": "object"
+      },
+      "name": "xlide_access_catalog",
+      "title": "Access tables and queries"
+    },
     {
       "annotations": {
         "destructive": false,
@@ -573,6 +609,30 @@
       },
       "name": "xlide_list_queries",
       "title": "List Power Query"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Lists the type libraries a VBA project references: the name code uses to qualify them, the kind, and the registry or file path the project recorded. Call it when a name will not resolve, when deciding between early and late binding, or when code works on one machine and not another: a reference names a path and a version, so a project can be broken by the machine rather than by its own code.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "list_referencesArguments",
+        "type": "object"
+      },
+      "name": "xlide_list_references",
+      "title": "List project references"
     },
     {
       "annotations": {

@@ -77,6 +77,7 @@ each one has the Trust Center setting that module injection needs.
 | | |
 |---|---|
 | Discover | `xlide_list_projects`, `xlide_project_info`, `xlide_validate_project`, `xlide_create_project`, `xlide_doctor` |
+| Catalog | `xlide_list_references`, `xlide_access_catalog` |
 | Modules | `xlide_list_modules`, `xlide_read_module`, `xlide_write_module`, `xlide_rename_module`, `xlide_delete_module`, `xlide_list_procedures`, `xlide_search_modules` |
 | Analysis | `xlide_analyze`, `xlide_analyze_source`, `xlide_rules` |
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_edit_form` |
@@ -138,7 +139,7 @@ them whether or not the user configured anything.
 ```bash
 cd python
 pip install -e ".[dev,live]"
-python -m pytest              # 150 tests, no Office needed
+python -m pytest              # 171 tests, no Office needed
 python -m pytest -m live      # 11 more, real Office, Windows only
 python -m ruff check src tests tools
 ```

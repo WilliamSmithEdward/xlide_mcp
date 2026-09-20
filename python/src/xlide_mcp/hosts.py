@@ -199,13 +199,26 @@ class container:
         self._handle: Any = None
 
     def __enter__(self) -> Any:
-        self._handle = open_container(self.path, self.info)
-        return self._handle
+        handle = open_container(self.path, self.info)
+        self._handle = handle
+        # Each pyOpenVBA class is a context manager, and they do not all release
+        # the same way: AccessDatabase has no close() at all, so calling one
+        # broke every Access tool in this server. Going through the object's own
+        # protocol lets each class say how it is opened and released.
+        enter = getattr(type(handle), "__enter__", None)
+        return enter(handle) if enter is not None else handle
 
-    def __exit__(self, *exc_info: object) -> None:
+    def __exit__(self, *exc_info: Any) -> None:
         handle, self._handle = self._handle, None
-        if handle is not None:
-            handle.close()
+        if handle is None:
+            return
+        leave = getattr(type(handle), "__exit__", None)
+        if leave is not None:
+            leave(handle, *(exc_info or (None, None, None)))
+            return
+        close = getattr(handle, "close", None)
+        if callable(close):
+            close()
 
 
 def iter_office_files(root: Path, *, include_unreadable: bool = False) -> Iterator[Path]:

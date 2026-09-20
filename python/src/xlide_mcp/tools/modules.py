@@ -393,10 +393,10 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "Its code can still be written with xlide_write_module."
                 )
             _check_new_name(new_name, modules)
-            if info.host == "access":
-                handle.rename_module(module.name, new_name)
-            else:
-                handle.vba_project().rename_module(module.name, new_name)
+            # The project's own rename works on every host, Access included:
+            # AccessDatabase.rename_module addresses its design modules, and
+            # refuses an ordinary one by name.
+            handle.vba_project().rename_module(module.name, new_name)
             save_warnings = project_layer.save(
                 handle,
                 info,
@@ -462,10 +462,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             stale = check_content_token(module.body, expected_content_token, module.name)
             if stale is not None:
                 raise ToolError(stale.message)
-            if info.host == "access":
-                handle.delete_module(module.name)
-            else:
-                handle.vba_project().delete_module(module.name)
+            handle.vba_project().delete_module(module.name)
             save_warnings = project_layer.save(
                 handle,
                 info,
