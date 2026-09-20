@@ -1,5 +1,7 @@
 # xlide-mcp
 
+[![xlide-excel-word-powerpoint-access-office-vba-mcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/WilliamSmithEdward/xlide_mcp/badges/card.svg)](https://glama.ai/mcp/servers/WilliamSmithEdward/xlide_mcp)
+
 [![Python Version](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
 [![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
