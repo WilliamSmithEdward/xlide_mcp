@@ -221,6 +221,21 @@ FIXTURES: dict[str, Any] = {
             }
         ],
     },
+    "loaded_query": {
+        "kind": "excel-workbook",
+        "file_name": "Loaded.xlsx",
+        "why": (
+            "A workbook whose one query is loaded onto a sheet, so the case about removing "
+            "every part of it has all the parts to remove."
+        ),
+        "power_query": [
+            {
+                "name": "Numbers",
+                "formula": "let Source = {1..10} in Source",
+                "load_to_sheet": {"columns": ["Value"], "cell": "A1"},
+            }
+        ],
+    },
     "workbook_with_a_form": {
         "kind": "excel-macro-workbook",
         "file_name": "Forms.xlsm",
@@ -1184,6 +1199,48 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "modules", "contains": "Tools"},
                 {"path": "modules", "not_contains": "Helpers"},
+            ],
+        )
+    )
+
+    # ------------------------------------------------------- the other halves
+    out.append(
+        case(
+            "power-query.removing-a-loaded-query-takes-its-plumbing",
+            "A query loaded onto a sheet is four things: the definition, a connection, a "
+            "query table and the table itself. Removing only the definition leaves a "
+            "connection pointing at a query that no longer exists, which Excel meets on the "
+            "next refresh rather than on open, so nothing says so at the time.",
+            "loaded_query",
+            [
+                step(
+                    "xlide_write_query",
+                    {
+                        "file_path": "${fixture}",
+                        "action": "remove",
+                        "query_name": "Numbers",
+                    },
+                )
+            ],
+            [{"path": "unloaded_from_sheet", "equals": True}],
+        )
+    )
+    out.append(
+        case(
+            "modules.deleting-one-warns-about-the-buttons-that-called-it",
+            "Nothing rewrites an OnAction, so a button keeps naming a procedure that has "
+            "gone and the user finds out by clicking it. Deleting such a module is a "
+            "legitimate thing to do, so this warns rather than refusing.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_delete_module",
+                    {"file_path": "${fixture}", "module_name": "Module1"},
+                )
+            ],
+            [
+                {"path": "shapes_now_calling_nothing", "at_least": 2},
+                {"path": "warning", "contains": "xlide_set_shape_macro"},
             ],
         )
     )

@@ -185,8 +185,14 @@ def register(server: MCPServer, settings: Settings) -> None:
                     book.rename_query(query_name, new_name.strip())
                     detail = {"renamed_from": query_name, "renamed_to": new_name.strip()}
                 else:
+                    # A query loaded onto a sheet is four things: the definition,
+                    # a connection, a query table and the table itself. Removing
+                    # only the definition leaves a connection pointing at a query
+                    # that no longer exists, which Excel meets on the next
+                    # refresh rather than on open, so nothing says so at the time.
+                    unloaded = bool(book.unload(query_name))
                     book.remove_query(query_name)
-                    detail = {"removed": query_name}
+                    detail = {"removed": query_name, "unloaded_from_sheet": unloaded}
                 book.save()
             except ToolError:
                 raise

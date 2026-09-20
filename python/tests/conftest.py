@@ -251,3 +251,16 @@ def workbook_with_a_form(workspace: Path) -> Path:
         form.add_control("CommandButton", "Ok", left=12, top=12)
         book.save()
     return path
+
+
+@pytest.fixture
+def loaded_query(workspace: Path) -> Path:
+    """A query loaded onto a sheet: four parts that all name each other."""
+    import pyopenvba
+
+    path = workspace / "Loaded.xlsx"
+    with pyopenvba.PowerQueryWorkbook.create_new(path) as book:
+        book.add_query("Numbers", "let Source = {1..10} in Source")
+        book.load_to_sheet("Numbers", ["Value"], cell="A1")
+        book.save()
+    return path

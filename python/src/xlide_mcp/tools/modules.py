@@ -393,6 +393,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "Its code can still be written with xlide_write_module."
                 )
             _refuse_form_module(module, info, "Renaming")
+            orphaned = _shapes_calling(path, info, module.name)
             _check_new_name(new_name, modules)
             # The project's own rename works on every host, Access included:
             # AccessDatabase.rename_module addresses its design modules, and
@@ -416,6 +417,12 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if save_warnings:
             result["warnings"] = save_warnings
+        if orphaned:
+            result["shapes_still_naming_the_old_module"] = orphaned
+            result["warning"] = (
+                f"{len(orphaned)} shapes name a procedure in {module.name}, and nothing "
+                "rewrites an OnAction. Repoint them with xlide_set_shape_macro."
+            )
         return result
 
     @server.tool(
@@ -461,6 +468,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "xlide_write_module."
                 )
             _refuse_form_module(module, info, "Deleting")
+            orphaned = _shapes_calling(path, info, module.name)
             stale = check_content_token(module.body, expected_content_token, module.name)
             if stale is not None:
                 raise ToolError(stale.message)
@@ -480,7 +488,42 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if save_warnings:
             result["warnings"] = save_warnings
+        if orphaned:
+            result["shapes_now_calling_nothing"] = orphaned
+            result["warning"] = (
+                f"{len(orphaned)} shapes still name a procedure in {module.name}, and nothing "
+                "rewrites an OnAction. Point them elsewhere with xlide_set_shape_macro, or "
+                "tell the user which buttons have stopped working."
+            )
         return result
+
+
+def _shapes_calling(path: Any, info: Any, module_name: str) -> list[dict[str, Any]]:
+    """Shapes whose OnAction names this module.
+
+    Deleting a module a button calls is a legitimate thing to do, so this warns
+    rather than refusing. What it prevents is the silent version: nothing rewrites
+    an OnAction, so the button keeps naming a procedure that has gone, and the
+    user finds out by clicking it.
+    """
+    if info.host != "excel" or not info.supports_sheets:
+        return []
+    try:
+        from ..shapes import read_sheet_shapes
+
+        by_sheet = read_sheet_shapes(path)
+    except Exception:
+        return []
+    wanted = module_name.casefold()
+    found: list[dict[str, Any]] = []
+    for sheet, shapes in by_sheet.items():
+        for shape in shapes:
+            if not shape.macro:
+                continue
+            owner = shape.macro.split(".", 1)[0] if "." in shape.macro else ""
+            if owner.casefold() == wanted:
+                found.append({"sheet": sheet, "shape": shape.name, "macro": shape.macro})
+    return found
 
 
 def _refuse_form_module(

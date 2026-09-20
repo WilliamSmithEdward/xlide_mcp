@@ -114,6 +114,23 @@
         }
       ]
     },
+    "loaded_query": {
+      "kind": "excel-workbook",
+      "file_name": "Loaded.xlsx",
+      "why": "A workbook whose one query is loaded onto a sheet, so the case about removing every part of it has all the parts to remove.",
+      "power_query": [
+        {
+          "name": "Numbers",
+          "formula": "let Source = {1..10} in Source",
+          "load_to_sheet": {
+            "columns": [
+              "Value"
+            ],
+            "cell": "A1"
+          }
+        }
+      ]
+    },
     "workbook_with_a_form": {
       "kind": "excel-macro-workbook",
       "file_name": "Forms.xlsm",
@@ -154,7 +171,7 @@
       ]
     }
   },
-  "case_count": 59,
+  "case_count": 61,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -1362,6 +1379,53 @@
         {
           "path": "modules",
           "not_contains": "Helpers"
+        }
+      ]
+    },
+    {
+      "id": "power-query.removing-a-loaded-query-takes-its-plumbing",
+      "why": "A query loaded onto a sheet is four things: the definition, a connection, a query table and the table itself. Removing only the definition leaves a connection pointing at a query that no longer exists, which Excel meets on the next refresh rather than on open, so nothing says so at the time.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "remove",
+            "query_name": "Numbers"
+          }
+        }
+      ],
+      "fixture": "loaded_query",
+      "expect": [
+        {
+          "path": "unloaded_from_sheet",
+          "equals": true
+        }
+      ]
+    },
+    {
+      "id": "modules.deleting-one-warns-about-the-buttons-that-called-it",
+      "why": "Nothing rewrites an OnAction, so a button keeps naming a procedure that has gone and the user finds out by clicking it. Deleting such a module is a legitimate thing to do, so this warns rather than refusing.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_delete_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Module1"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shapes_now_calling_nothing",
+          "at_least": 2
+        },
+        {
+          "path": "warning",
+          "contains": "xlide_set_shape_macro"
         }
       ]
     },
