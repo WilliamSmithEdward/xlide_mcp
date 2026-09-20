@@ -67,6 +67,29 @@ a server over stdio:
 }
 ```
 
+Or install nothing and let [uv](https://github.com/astral-sh/uv) fetch it on
+first run. uv is one binary and installs its own Python, so a machine with
+neither can still run this:
+
+```json
+{
+  "mcpServers": {
+    "xlide": {
+      "command": "uvx",
+      "args": [
+        "--from", "xlide-mcp[live]",
+        "xlide-mcp", "--root", "/path/to/your/files"
+      ]
+    }
+  }
+}
+```
+
+The `live` extra is safe to ask for on every platform: what it pulls in is marked
+`sys_platform == 'win32'`, so off Windows it resolves to nothing and the same
+configuration works everywhere. Drop the `--from` pair for the file layer alone.
+uvx takes the newest published version unless you pin it, as `xlide-mcp@0.1.0`.
+
 `--root` is the security boundary. Every path a tool accepts is resolved,
 symlinks included, and refused unless it lands inside a root. Add `--read-only`
 to allow reads and analysis and refuse every write.

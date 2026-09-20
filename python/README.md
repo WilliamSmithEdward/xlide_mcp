@@ -33,6 +33,16 @@ pip install xlide-mcp              # reads and writes files, any platform
 pip install "xlide-mcp[live]"      # adds running macros and tests, Windows
 ```
 
+Or install nothing and run it through [uv](https://github.com/astral-sh/uv),
+which fetches the package on first use and brings its own Python:
+
+```bash
+uvx --from "xlide-mcp[live]" xlide-mcp --root /path/to/your/files
+```
+
+The `live` extra is safe to ask for on every platform: what it pulls in is marked
+`sys_platform == 'win32'`, so off Windows it resolves to nothing.
+
 ## Run
 
 ```bash
@@ -52,6 +62,24 @@ launches a server over stdio:
   }
 }
 ```
+
+With uv instead, so that nothing has to be installed first:
+
+```json
+{
+  "mcpServers": {
+    "xlide": {
+      "command": "uvx",
+      "args": [
+        "--from", "xlide-mcp[live]",
+        "xlide-mcp", "--root", "/path/to/your/files"
+      ]
+    }
+  }
+}
+```
+
+uvx takes the newest published version unless you pin it, as `xlide-mcp@0.1.0`.
 
 `--root` is the security boundary. Every path a tool accepts is resolved,
 symlinks included, and refused unless it lands inside a root.
