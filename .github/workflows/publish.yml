@@ -95,6 +95,49 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
+  registry:
+    name: Publish to the MCP Registry
+    # After PyPI, and only after. The registry validates ownership by fetching
+    # the package's description from PyPI and looking for the `mcp-name` marker
+    # in it, so a registry publish that ran first would fail on a package that
+    # does not exist yet.
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      # OIDC is how mcp-publisher proves the io.github.WilliamSmithEdward
+      # namespace. No token and no secret.
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate
+        run: ./mcp-publisher login github-oidc
+
+      # PyPI serves a new release's description a moment after the upload
+      # returns, and the registry reads it to find the ownership marker.
+      - name: Wait for PyPI to serve the new version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for attempt in $(seq 1 10); do
+            if curl -sf "https://pypi.org/pypi/xlide-mcp/$VERSION/json" > /dev/null; then
+              echo "PyPI is serving $VERSION"
+              exit 0
+            fi
+            echo "attempt $attempt: not there yet"
+            sleep 15
+          done
+          echo "ERROR: PyPI never served $VERSION"
+          exit 1
+
+      - name: Publish
+        run: ./mcp-publisher publish
+
   github-release:
     name: Create GitHub Release
     needs: publish

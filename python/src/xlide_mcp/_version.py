@@ -9,4 +9,4 @@ so a release bumps one line and the packaging metadata, the server's `version`
 field and the generated contract all follow.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

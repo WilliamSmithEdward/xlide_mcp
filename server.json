@@ -1,0 +1,40 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.WilliamSmithEdward/xlide-mcp",
+  "title": "XLIDE",
+  "description": "Read, write, analyze, test and diff the VBA, forms, Power Query and cells in Office files",
+  "repository": {
+    "url": "https://github.com/WilliamSmithEdward/xlide_mcp",
+    "source": "github"
+  },
+  "version": "1.0.1",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "xlide-mcp",
+      "version": "1.0.1",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--root",
+          "description": "A folder the server may reach. Every path a tool accepts is resolved, symlinks included, and refused unless it lands inside a root. Repeatable.",
+          "isRequired": true,
+          "isRepeated": true,
+          "format": "filepath",
+          "value": "{workspace}",
+          "variables": {
+            "workspace": {
+              "description": "Absolute path to the folder holding the Office files this server may open.",
+              "isRequired": true,
+              "format": "filepath"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

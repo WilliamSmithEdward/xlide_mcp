@@ -3,6 +3,24 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [1.0.1]
+
+Registry metadata. No behaviour change: the tool surface, the conformance corpus
+and the contract digest are identical to 1.0.0.
+
+- Listed in the [MCP registry](https://registry.modelcontextprotocol.io) as
+  `io.github.WilliamSmithEdward/xlide-mcp`, which is the index the major clients
+  and most third-party directories read from.
+- `server.json` describes the package for that listing, and the PyPI description
+  carries the `mcp-name` marker the registry proves ownership with.
+- Pushing a tag now registers the release as well as publishing it, authenticated
+  by OIDC, so there is no token to store. The registry step runs after PyPI and
+  waits for the new version to be served, because ownership is proved by reading
+  the published description.
+- A test keeps the three copies of that name and version in step. Getting them
+  out of step fails the registry publish on a release already gone to PyPI,
+  which cannot be taken back.
+
 ## [1.0.0]
 
 First release. An MCP server for the VBA, UserForms, Power Query, worksheet
@@ -78,4 +96,5 @@ cells and document surface inside Office files, and for Visual Basic 6 projects.
 - The document surface is Excel only. Word, PowerPoint and Access reach their
   VBA, forms and catalogs, and their document surfaces follow pyOfficeEditor.
 
+[1.0.1]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.0

@@ -113,6 +113,38 @@ def test_every_relative_link_points_at_something_that_exists() -> None:
             )
 
 
+def test_the_registry_entry_agrees_with_the_package() -> None:
+    """`server.json` is what the MCP registry publishes, and three of its fields
+    restate something the package already says.
+
+    The one that matters is the ownership marker. The registry proves a PyPI
+    package belongs to a server by fetching the published description and
+    finding `mcp-name: <server name>` in it. That marker lives in the package
+    README and the name lives in server.json, which is the same two-part write
+    that breaks everything else here: change one, and the registry publish fails
+    on a release that has already gone out to PyPI and cannot be taken back.
+    """
+    from xlide_mcp import __version__
+
+    entry = json.loads((REPO_ROOT / "server.json").read_text(encoding="utf-8"))
+    package = entry["packages"][0]
+
+    assert entry["version"] == __version__, (
+        f"server.json says version {entry['version']}, the package is {__version__}."
+    )
+    assert package["version"] == __version__, (
+        f"server.json's package says {package['version']}, the package is {__version__}."
+    )
+    assert package["identifier"] == "xlide-mcp"
+
+    readme = _read("python/README.md")
+    marker = f"mcp-name: {entry['name']}"
+    assert marker in readme, (
+        f"python/README.md is the published PyPI description and must carry "
+        f"'{marker}', or the registry cannot prove the package is this server's."
+    )
+
+
 def test_a_stated_conformance_count_matches_the_corpus() -> None:
     total, refusals = _conformance_counts()
     # Collapse the wrapping first: these sentences are hard-wrapped, and a count

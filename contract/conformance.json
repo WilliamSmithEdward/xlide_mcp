@@ -1,5 +1,5 @@
 {
-  "conformance_version": "1.0.0",
+  "conformance_version": "1.0.1",
   "reference_implementation": "python",
   "note": "Behaviour every implementation in this repository owes. The Python suite runs this file, so a case that is wrong fails there before a port ever sees it.",
   "requires": {
