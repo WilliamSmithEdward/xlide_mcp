@@ -1,7 +1,6 @@
 # xlide-mcp
 
-[![PyPI version](https://img.shields.io/pypi/v/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
-[![Python versions](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
+[![Python Version](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
 [![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
 
