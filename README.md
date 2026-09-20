@@ -87,6 +87,15 @@ The `live` extra is safe to ask for on every platform: what it pulls in is marke
 configuration works everywhere. Drop the `--from` pair for the file layer alone.
 uvx takes the newest published version unless you pin it, as `xlide-mcp@1.0.0`.
 
+There is a `Dockerfile` for the file layer, which is the part that needs no
+Office installation. Mount the folder holding the files at `/workspace`, because
+that is the root the container is bounded to:
+
+```bash
+docker build -t xlide-mcp .
+docker run --rm -i -v "$PWD:/workspace" xlide-mcp
+```
+
 `--root` is the security boundary. Every path a tool accepts is resolved,
 symlinks included, and refused unless it lands inside a root. Add `--read-only`
 to allow reads and analysis and refuse every write.

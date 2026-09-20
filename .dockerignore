@@ -1,0 +1,25 @@
+# The image builds from python/ and nothing else. Everything here is either not
+# copied or actively unwanted in the build context.
+.git
+.github
+contract
+docs
+*.md
+!python/README.md
+
+# Python build output and caches, which would be copied over the top of a clean
+# install and are wrong for the image's platform anyway.
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/*.egg-info
+**/build
+**/dist
+**/.venv
+
+# Test fixtures are generated on the fly, and Office writes a lock file beside
+# any document it has open.
+python/tests/fixtures/generated
+~$*
