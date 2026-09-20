@@ -6,7 +6,7 @@ repository must expose and what its answers must mean.
 | File | What it pins | Regenerate with |
 |---|---|---|
 | `tool-surface.json` | Every tool: name, description, argument schema, and whether it writes. | `python tools/export_contract.py` |
-| `conformance.json` | What the answers mean: 61 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
+| `conformance.json` | What the answers mean: 63 cases, each a short script of calls and assertions. | `python tools/export_conformance.py` |
 
 Both are **derived from the Python implementation**, never hand-edited. A
 hand-maintained contract drifts the first time someone adds an argument and

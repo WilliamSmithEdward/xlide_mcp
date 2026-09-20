@@ -24,7 +24,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
-from ._common import read_only, truncate, writes
+from ._common import bound, read_only, truncate, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -56,12 +56,16 @@ def register(server: MCPServer, settings: Settings) -> None:
                 for query in book.queries()
             ]
             groups = [group.name for group in book.groups()]
-        return {
+        shown, note = bound(queries, "queries", "Read one with xlide_read_query.")
+        result: dict[str, Any] = {
             "path": str(path),
             "count": len(queries),
-            "queries": queries,
+            "queries": shown,
             "groups": groups,
         }
+        if note:
+            result["note"] = note
+        return result
 
     @server.tool(
         name="xlide_read_query",

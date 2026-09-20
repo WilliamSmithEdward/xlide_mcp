@@ -9,6 +9,7 @@ would be confirmed by nobody.
 from __future__ import annotations
 
 import difflib
+import json
 from typing import Any
 
 from mcp.types import ToolAnnotations
@@ -89,3 +90,55 @@ def limited(items: list[Any], limit: int = MAX_LIST_ITEMS) -> tuple[list[Any], i
     if len(items) <= limit:
         return items, len(items)
     return items[:limit], len(items)
+
+
+# How many of a thing one result carries. A legacy project with 400 modules is
+# ordinary, and a data-entry form with 400 controls is not absurd; measured, that
+# form came back as 112 KB in a single call, which is most of what an agent has
+# to think with. These are generous enough that no ordinary file meets them.
+MAX_ITEMS: dict[str, int] = {
+    "modules": 300,
+    "controls": 300,
+    "shapes": 300,
+    "queries": 300,
+    "forms": 300,
+    "files": 2_000,
+    "plan": 500,
+    "relationships": 300,
+    "tables": 500,
+}
+
+
+# The size one listing may occupy. A count alone is the wrong measure: 300
+# modules is 34 KB and 300 form controls with their properties is 84 KB, because
+# what an item costs depends entirely on what an item is.
+MAX_LISTING_CHARS = 40_000
+
+
+def bound(items: list[Any], what: str, narrower: str = "") -> tuple[list[Any], str]:
+    """Cut a listing to its ceiling and say what was cut and how to see the rest.
+
+    Returns the items to send and a note, empty when nothing was cut. Every
+    listing in this server goes through here rather than choosing its own limit,
+    so a result that stops short says so the same way wherever it came from: a
+    silent truncation reads as a complete answer, and an agent acts on it.
+
+    Two ceilings, whichever comes first: a count, and a size. The size is what
+    actually matters, because a tool result is model context and an item's cost
+    depends on what the item is.
+    """
+    limit = min(MAX_ITEMS.get(what, MAX_LIST_ITEMS), len(items))
+    budget = MAX_LISTING_CHARS
+    kept = 0
+    for item in items[:limit]:
+        budget -= len(json.dumps(item, default=str))
+        if budget < 0:
+            break
+        kept += 1
+    kept = max(kept, 1) if items else 0
+
+    if kept >= len(items):
+        return items, ""
+    withheld = len(items) - kept
+    note = f"{len(items)} {what} in all; the first {kept} are here and {withheld} are not."
+    return items[:kept], f"{note} {narrower}".strip()

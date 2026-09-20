@@ -27,7 +27,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import require_writable, resolve_path
-from ._common import read_only, writes
+from ._common import bound, read_only, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -96,17 +96,24 @@ def register(server: MCPServer, settings: Settings) -> None:
             form_display = form.name
             design_kind = _design_kind(form)
             sections = _sections(form)
-            controls = [_control(c, include_properties) for c in form.walk()]
+            every_control = [_control(c, include_properties) for c in form.walk()]
             form_properties = _safe_properties(form) if include_properties else {}
+        controls, controls_note = bound(
+            every_control,
+            "controls",
+            "Call again with include_properties false for the tree alone.",
+        )
         result: dict[str, Any] = {
             "path": str(path),
             "form": form_display,
             "design": design_kind,
             "geometry_unit": "twips" if info.host == "access" else "points",
             "properties": form_properties,
-            "control_count": len(controls),
+            "control_count": len(every_control),
             "controls": controls,
         }
+        if controls_note:
+            result["note"] = controls_note
         if sections:
             result["sections"] = sections
         return result

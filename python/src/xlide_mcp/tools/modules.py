@@ -21,7 +21,7 @@ from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import require_writable, resolve_path
 from ..tokens import check_content_token, content_token
-from ._common import change_summary, limited, read_only, truncate, writes
+from ._common import bound, change_summary, limited, read_only, truncate, writes
 
 _VALID_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,30}$")
 
@@ -69,12 +69,20 @@ def register(server: MCPServer, settings: Settings) -> None:
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
-        return {
+        shown, note = bound(
+            [m.summary() for m in modules],
+            "modules",
+            "Use xlide_search_modules to find the one you want.",
+        )
+        result: dict[str, Any] = {
             "path": str(path),
             "host": info.host,
             "count": len(modules),
-            "modules": [m.summary() for m in modules],
+            "modules": shown,
         }
+        if note:
+            result["note"] = note
+        return result
 
     @server.tool(
         name="xlide_read_module",

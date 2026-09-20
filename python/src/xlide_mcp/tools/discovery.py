@@ -19,7 +19,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import CREATABLE, NOT_READABLE, host_info, iter_office_files, require_readable
 from ..paths import require_writable, resolve_path
-from ._common import limited, read_only, writes
+from ._common import bound, limited, read_only, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -116,7 +116,15 @@ def register(server: MCPServer, settings: Settings) -> None:
                 modules = project_layer.read_modules(handle, info)
                 status = project_layer.project_status(handle, info)
                 result["project_name"] = status.project_name
-                result["modules"] = [m.summary() for m in modules]
+                shown, note = bound(
+                    [m.summary() for m in modules],
+                    "modules",
+                    "Use xlide_search_modules to find the one you want.",
+                )
+                result["modules"] = shown
+                result["module_count"] = len(modules)
+                if note:
+                    result["modules_note"] = note
                 result["password_protected"] = status.password_protected
                 result["digitally_signed"] = status.digitally_signed
                 result["forms"] = _form_names(handle)

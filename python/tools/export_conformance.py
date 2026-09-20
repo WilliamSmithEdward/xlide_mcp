@@ -221,6 +221,21 @@ FIXTURES: dict[str, Any] = {
             }
         ],
     },
+    "crowded_workbook": {
+        "kind": "excel-macro-workbook",
+        "file_name": "Crowded.xlsm",
+        "why": (
+            "More modules than any listing returns, so the bound and the note that explains "
+            "it have something to act on. A legacy project of this size is ordinary."
+        ),
+        "modules": [
+            {
+                "name": "Mod000 .. Mod319",
+                "kind": "standard",
+                "source": "Any short standard module; 320 of them, numbered to three digits.",
+            }
+        ],
+    },
     "loaded_query": {
         "kind": "excel-workbook",
         "file_name": "Loaded.xlsx",
@@ -1489,6 +1504,38 @@ def cases() -> list[dict[str, Any]]:
                 )
             ],
             requires="git",
+        )
+    )
+
+    # ----------------------------------------------------------------- bounds
+    out.append(
+        case(
+            "bounds.a-listing-that-stops-short-says-so",
+            "A tool result is model context, and a listing that silently stops short reads "
+            "as a complete answer: an agent reports the workbook has 300 modules, or that "
+            "the module it was asked about does not exist. The count stays the project's, "
+            "and a note says what was withheld.",
+            "crowded_workbook",
+            [step("xlide_list_modules", {"file_path": "${fixture}"})],
+            [
+                {"path": "count", "at_least": 320},
+                {"path": "note", "contains": "are not"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "bounds.a-direct-read-is-not-bounded-by-a-listing",
+            "Bounding a listing must not put anything out of reach. A module past the limit "
+            "is still read by name, or the bound has hidden it rather than summarized it.",
+            "crowded_workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Mod319"},
+                )
+            ],
+            [{"path": "module", "equals": "Mod319"}],
         )
     )
 

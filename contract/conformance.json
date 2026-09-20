@@ -114,6 +114,18 @@
         }
       ]
     },
+    "crowded_workbook": {
+      "kind": "excel-macro-workbook",
+      "file_name": "Crowded.xlsm",
+      "why": "More modules than any listing returns, so the bound and the note that explains it have something to act on. A legacy project of this size is ordinary.",
+      "modules": [
+        {
+          "name": "Mod000 .. Mod319",
+          "kind": "standard",
+          "source": "Any short standard module; 320 of them, numbered to three digits."
+        }
+      ]
+    },
     "loaded_query": {
       "kind": "excel-workbook",
       "file_name": "Loaded.xlsx",
@@ -171,7 +183,7 @@
       ]
     }
   },
-  "case_count": 61,
+  "case_count": 63,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -1773,6 +1785,51 @@
         }
       ],
       "fixture": "workbook"
+    },
+    {
+      "id": "bounds.a-listing-that-stops-short-says-so",
+      "why": "A tool result is model context, and a listing that silently stops short reads as a complete answer: an agent reports the workbook has 300 modules, or that the module it was asked about does not exist. The count stays the project's, and a note says what was withheld.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "crowded_workbook",
+      "expect": [
+        {
+          "path": "count",
+          "at_least": 320
+        },
+        {
+          "path": "note",
+          "contains": "are not"
+        }
+      ]
+    },
+    {
+      "id": "bounds.a-direct-read-is-not-bounded-by-a-listing",
+      "why": "Bounding a listing must not put anything out of reach. A module past the limit is still read by name, or the bound has hidden it rather than summarized it.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Mod319"
+          }
+        }
+      ],
+      "fixture": "crowded_workbook",
+      "expect": [
+        {
+          "path": "module",
+          "equals": "Mod319"
+        }
+      ]
     },
     {
       "id": "workspace.refuses-a-path-outside-the-roots",

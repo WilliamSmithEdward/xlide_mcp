@@ -21,7 +21,7 @@ from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
 from ..xlsx import MAX_CELLS_PER_READ, CellRange, Workbook, parse_cell_ref
-from ._common import read_only, writes
+from ._common import bound, read_only, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -132,11 +132,18 @@ def register(server: MCPServer, settings: Settings) -> None:
         from ..shapes import read_sheet_shapes
 
         by_sheet = read_sheet_shapes(path, sheet.strip() or None)
-        sheets = [
-            {"sheet": name, "shapes": [shape.summary() for shape in shapes]}
-            for name, shapes in by_sheet.items()
-        ]
-        total = sum(len(entry["shapes"]) for entry in sheets)
+        sheets = []
+        notes: list[str] = []
+        for name, shapes in by_sheet.items():
+            shown, note = bound(
+                [shape.summary() for shape in shapes],
+                "shapes",
+                f"Ask for one sheet with sheet={name!r}.",
+            )
+            sheets.append({"sheet": name, "shapes": shown})
+            if note:
+                notes.append(f"{name}: {note}")
+        total = sum(len(shapes) for shapes in by_sheet.values())
         with_macros = [
             {"sheet": entry["sheet"], "shape": shape["name"], "macro": shape["macro"]}
             for entry in sheets
@@ -148,6 +155,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "shape_count": total,
             "sheets": sheets,
         }
+        if notes:
+            result["note"] = " ".join(notes)
         if with_macros:
             # The link an agent is usually actually after, lifted out of the tree.
             result["macros_run_by_shapes"] = with_macros

@@ -32,7 +32,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import resolve_path
-from ._common import read_only, truncate
+from ._common import MAX_ITEMS, bound, read_only, truncate
 
 # A git call that has not answered by now is a repository problem, not slow work.
 GIT_TIMEOUT = 30.0
@@ -110,14 +110,27 @@ def register(server: MCPServer, settings: Settings) -> None:
             entries.append(entry)
 
         changed = [e for e in entries if e["status"] != "unchanged"]
+        # What a reviewer came for is what changed, so the unchanged modules are
+        # the ones dropped when a project is too big to report whole.
+        reportable = changed if len(entries) > MAX_ITEMS["modules"] else entries
+        shown, note = bound(
+            reportable, "modules", "Ask for one module with module_name."
+        )
         result: dict[str, Any] = {
             "path": str(path),
             "repository": str(repository),
             "revision": revision,
             "modules_changed": len(changed),
-            "modules": entries,
+            "modules": shown,
             "verdict": "no VBA changes" if not changed else f"{len(changed)} modules changed",
         }
+        if len(entries) > MAX_ITEMS["modules"]:
+            result["note"] = (
+                f"{len(entries)} modules in the project; only the ones that changed are "
+                "listed. " + note
+            ).strip()
+        elif note:
+            result["note"] = note
         if wanted and not entries:
             raise ToolError(
                 f"No module named {module_name!r} in either version. Modules now: "

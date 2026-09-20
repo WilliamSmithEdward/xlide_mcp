@@ -264,3 +264,19 @@ def loaded_query(workspace: Path) -> Path:
         book.load_to_sheet("Numbers", ["Value"], cell="A1")
         book.save()
     return path
+
+
+@pytest.fixture
+def crowded_workbook(workspace: Path) -> Path:
+    """More modules than any listing returns, so the bound has something to bind."""
+    import pyopenvba
+
+    from xlide_mcp.tools._common import MAX_ITEMS
+
+    body = "Option Explicit\r\n\r\nPublic Sub Only()\r\nEnd Sub\r\n"
+    path = workspace / "Crowded.xlsm"
+    with pyopenvba.ExcelFile.create_new(path) as book:
+        for i in range(MAX_ITEMS["modules"] + 20):
+            book.vba_project().add_module(f"Mod{i:03d}", body)
+        book.save()
+    return path
