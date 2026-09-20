@@ -5,14 +5,12 @@
      repository's server.json. -->
 <!-- mcp-name: io.github.WilliamSmithEdward/xlide-excel-office-vba-mcp -->
 
-**An MCP server for the code inside Office files.** The VBA, the UserForms, the
-Power Query and the worksheet cells in Excel, Word, PowerPoint and Access
-documents, plus Visual Basic 6 projects, reachable by any agent that speaks the
-Model Context Protocol.
+**An MCP server for the inside of an Office file.** Read, write, analyze and
+test the VBA in Excel, Word, PowerPoint and Access, and edit the document around
+it. Visual Basic 6 projects open the same way.
 
-Reading and writing the file needs no Office installation and works on Windows,
-macOS and Linux. Running macros and tests needs Windows with the desktop
-application.
+Reading and writing needs no Office installation and runs on Windows, macOS and
+Linux. Running macros and tests needs Windows with the desktop application.
 
 ```text
 xlide_list_projects                -> Budget.xlsm
@@ -106,22 +104,30 @@ whether each has the Trust Center setting that module injection needs.
 
 ## What it does
 
-**Files** - no Office installation, any platform.
+**Files** - no Office installation, any platform. Two halves: the code project,
+and the document it lives in.
+
+*The code project*
 
 | | |
 |---|---|
 | Discover | `xlide_list_projects`, `xlide_project_info`, `xlide_validate_project`, `xlide_create_project`, `xlide_doctor` |
-| Catalog | `xlide_list_references`, `xlide_access_catalog` |
 | Modules | `xlide_list_modules`, `xlide_read_module`, `xlide_write_module`, `xlide_rename_module`, `xlide_delete_module`, `xlide_list_procedures`, `xlide_search_modules` |
 | Analysis | `xlide_analyze`, `xlide_analyze_source`, `xlide_rules` |
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_manage_form`, `xlide_edit_form` |
+| Catalog | `xlide_list_references`, `xlide_access_catalog` |
+| Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
+
+*The document around it*
+
+| | |
+|---|---|
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` |
-| Cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_format_cells` |
-| Workbook structure | `xlide_manage_sheet`, `xlide_manage_rows_columns` |
+| Sheets and cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_format_cells` |
+| Structure | `xlide_manage_sheet`, `xlide_manage_rows_columns` |
 | Tables and names | `xlide_manage_table`, `xlide_manage_name` |
 | Rules and links | `xlide_manage_validation`, `xlide_manage_conditional_format`, `xlide_manage_hyperlink`, `xlide_page_setup` |
 | Shapes | `xlide_list_shapes`, `xlide_set_shape_macro` |
-| Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
 
 **Execution** - Windows with the desktop application.
 
@@ -136,13 +142,18 @@ the Visual Basic Editor.
 
 ### Formats
 
-| Host | VBA | Power Query | Cells |
-|---|---|---|---|
-| Excel | `.xlsm` `.xlsb` `.xlam` `.xls` | `.xlsx` `.xlsm` `.xlsb` `.xlam` | `.xlsx` `.xlsm` `.xlam`, and `.xlsb` `.xls` through Excel |
-| Word | `.docm` `.dotm` `.doc` | - | - |
-| PowerPoint | `.pptm` `.potm` | - | - |
-| Access | `.accdb` `.mdb` | - | - |
-| Visual Basic 6 | `.vbp` | - | - |
+| Host | Extensions |
+|---|---|
+| Excel | `.xlsm` `.xlsb` `.xlam` `.xls`, and `.xlsx` for everything except VBA |
+| Word | `.docm` `.dotm` `.doc` |
+| PowerPoint | `.pptm` `.potm` |
+| Access | `.accdb` `.mdb` |
+| Visual Basic 6 | `.vbp` |
+
+VBA reads and writes in all of them. Power Query and the document surface are
+Excel's, and they live in the OOXML package, so they come from `.xlsx`, `.xlsm`
+and `.xlam`. A `.xlsb` keeps its grid in binary records and a `.xls` inside a
+compound file; on Windows with Excel, both go through Excel instead.
 
 A recognized extension outside those sets is listed with the reason it cannot be
 opened. Nothing drops out of a listing without saying why.
