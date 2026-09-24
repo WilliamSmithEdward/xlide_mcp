@@ -452,6 +452,26 @@ def references(handle: Any, info: HostInfo) -> list[Any]:
         return []
 
 
+def referenced_hosts(handle: Any, info: HostInfo) -> list[str] | None:
+    """The other Office libraries a project references, as the analyzer names them.
+
+    What lets it report `Dim doc As Word.Document` in a workbook that does not
+    reference Word, and check code that does against Word's model as well as
+    Excel's. None means the list is unknown, which the analyzer treats as nothing
+    proven missing; an empty list means it is known to name nothing else.
+    """
+    if info.host == "vb6":
+        return None
+    from pyvbaanalysis.host import referenced_host_tokens
+
+    try:
+        declared = references(handle, info)
+    except Exception:
+        return None
+    libids = [ref.libid for ref in declared if isinstance(getattr(ref, "libid", None), str)]
+    return referenced_host_tokens(info.host, libids)
+
+
 def open_project(path: Path, info: HostInfo | None = None) -> container:
     """`with open_project(path) as book:`"""
     return container(path, info or require_readable(path))

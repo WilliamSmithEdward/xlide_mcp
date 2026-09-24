@@ -13,9 +13,13 @@ The second is the rest of an Access database. An .accdb is an application, not a
 document: its tables, its saved queries and the relationships between them are
 what the VBA is written against, and reading the modules alone shows half of it.
 
-Both read and neither writes. Adding a reference means being right about a GUID
-and a version on a machine this server cannot see, and a wrong one produces a
-project that fails to compile with a message naming nothing.
+References can be written as well as read. Adding one means being right about a
+GUID and a version, and a wrong one is a reference the host marks MISSING with a
+message naming nothing, so the GUID comes from this machine's registry rather
+than from anyone's memory of it: the same list the VBA editor's References dialog
+shows. pyOpenVBA writes the record, marks the compiled cache stale so the host
+reads the change, and refuses the two edits that break a project: the host's own
+library, which is implicit, and Microsoft Forms while a UserForm needs it.
 """
 
 from __future__ import annotations
@@ -26,11 +30,15 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from .. import project as project_layer
+from .. import typelibs, xlide_vscode
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
-from ..paths import resolve_path
-from ._common import limited, read_only
+from ..paths import require_writable, resolve_path
+from ._common import limited, read_only, writes
+
+# The four libraries pyOpenVBA can add by name alone, on any platform.
+_OFFICE_LIBRARIES = frozenset({"excel", "word", "powerpoint", "access"})
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -65,11 +73,163 @@ def register(server: MCPServer, settings: Settings) -> None:
             "note": (
                 "A reference is recorded as a path and a version. A file missing from that "
                 "path on another machine is the usual cause of code that compiles here and "
-                "not there."
+                f"not there. {info.title}'s own library and VBA's are implicit and never listed."
             ),
         }
         if not has_project:
             result["note"] = project_layer.no_project_note(path, info)
+        return result
+
+    @server.tool(
+        name="xlide_manage_reference",
+        title="Add or remove a project reference",
+        annotations=writes("Add or remove a project reference", destructive=True),
+        description=(
+            "Adds or removes a type library reference in a VBA project and saves the file. "
+            "Use it when xlide_analyze reports missing-library-reference, or when code needs "
+            "early binding, as Dim d As Scripting.Dictionary does. Name the library: Excel, "
+            "Word, PowerPoint and Access work anywhere, and on Windows any library the VBA "
+            "editor's References dialog lists resolves by its description (Microsoft "
+            "Scripting Runtime) or by the name code writes (Scripting), taking its GUID, "
+            "version and path from this machine's registry. A name that matches several "
+            "libraries is refused with the candidates. Off Windows, pass guid and version. "
+            "Adding the host's own library, or removing Microsoft Forms while a UserForm "
+            "exists, is refused: the first is implicit and the second stops the project "
+            "compiling."
+        ),
+    )
+    def manage_reference(
+        file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
+        action: Annotated[str, Field(description="'add' or 'remove'.")],
+        library: Annotated[
+            str,
+            Field(
+                description=(
+                    "For add: the library's description, the name code uses, or Excel, Word, "
+                    "PowerPoint or Access. For remove: the name xlide_list_references reports, "
+                    "or the GUID."
+                )
+            ),
+        ],
+        guid: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "For add: the library's GUID, when it is not registered on this machine. "
+                    "library is then the name the reference is recorded under."
+                ),
+            ),
+        ] = "",
+        version: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "For add with guid: major.minor in hexadecimal, as the registry spells it, "
+                    "such as 1.0 or 2.8. Empty takes the newest registered, or 1.0."
+                ),
+            ),
+        ] = "",
+        allow_protected: Annotated[
+            bool, Field(default=False, description="Ask the user first.")
+        ] = False,
+        allow_invalidate_signature: Annotated[
+            bool, Field(default=False, description="Ask the user first.")
+        ] = False,
+    ) -> dict[str, Any]:
+        require_writable(settings, "xlide_manage_reference")
+        path = resolve_path(file_path, settings)
+        info = require_readable(path)
+        wanted = (action or "").strip().lower()
+        if wanted not in {"add", "remove"}:
+            raise ToolError("action must be 'add' or 'remove'.")
+        if info.host == "vb6":
+            raise ToolError(
+                "A Visual Basic 6 project's references are Reference= lines in its .vbp. Edit "
+                "the manifest, or add the reference in the VB6 IDE."
+            )
+        if not (library or "").strip() and not (guid or "").strip():
+            raise ToolError("Name the library, or give its guid.")
+
+        import pyopenvba
+
+        with project_layer.open_project(path, info) as handle:
+            if not project_layer.has_project(handle, info):
+                raise ToolError(
+                    project_layer.no_project_note(path, info)
+                    + " Write the first module, then add the reference."
+                )
+            before = [_reference(ref) for ref in project_layer.references(handle, info)]
+            try:
+                if wanted == "add":
+                    spec = _library_spec(library, guid, version)
+                    handle.add_reference(
+                        spec["name"],
+                        spec.get("guid"),
+                        spec.get("major", 1),
+                        spec.get("minor", 0),
+                        path=spec.get("path", ""),
+                        description=spec.get("description", ""),
+                    )
+                else:
+                    target = (library or guid).strip()
+                    if not handle.remove_reference(target):
+                        listed = ", ".join(entry["name"] for entry in before) or "(none)"
+                        raise ToolError(
+                            f"The project has no reference named {target!r}. It references: "
+                            f"{listed}. {info.title}'s own library and VBA's are implicit and "
+                            "cannot be removed."
+                        )
+            except pyopenvba.PyOpenVBAError as exc:
+                # The base class: Access refuses with its own AccessError.
+                raise ToolError(_reference_refusal(str(exc), info)) from exc
+            after = [_reference(ref) for ref in project_layer.references(handle, info)]
+            if after == before:
+                return {
+                    "path": str(path),
+                    "action": wanted,
+                    "changed": False,
+                    "saved": False,
+                    "references": after,
+                    "note": "The project already references that library. Nothing was written.",
+                }
+            save_warnings = project_layer.save(
+                handle,
+                info,
+                path=path,
+                allow_protected=allow_protected,
+                allow_invalidate_signature=allow_invalidate_signature,
+            )
+
+        known = {entry["name"].casefold() for entry in before}
+        result: dict[str, Any] = {
+            "path": str(path),
+            "action": wanted,
+            "changed": True,
+            "saved": True,
+            "references": after,
+        }
+        if wanted == "add":
+            result["added"] = next(
+                (entry for entry in after if entry["name"].casefold() not in known), None
+            )
+            result["next_step"] = (
+                "Run xlide_analyze: names qualified with this library now resolve."
+            )
+        else:
+            remaining = {entry["name"].casefold() for entry in after}
+            result["removed"] = [
+                entry["name"] for entry in before if entry["name"].casefold() not in remaining
+            ]
+            result["next_step"] = (
+                "Run xlide_analyze: code that named this library no longer compiles."
+            )
+        if save_warnings:
+            result["warnings"] = save_warnings
+        notice = xlide_vscode.file_changed(path, "references", tool="xlide_manage_reference")
+        if notice:
+            result["xlide_vscode"] = notice
         return result
 
     @server.tool(
@@ -126,6 +286,102 @@ def register(server: MCPServer, settings: Settings) -> None:
             if wanted in {"relationships", "all"}:
                 result["relationships"] = _relationships(handle, include_system)
         return result
+
+
+def _library_spec(library: str, guid: str, version: str) -> dict[str, Any]:
+    """What to add: a name, and a GUID, version, path and description where needed.
+
+    Three routes, in order of how much can go wrong. An explicit GUID is taken as
+    given, filled in from the registry where it is registered. One of the four
+    Office libraries is pyOpenVBA's to spell. Anything else is looked up in this
+    machine's registry by description or by the library's own name, because a
+    GUID from memory is how a project gets a reference Excel marks MISSING.
+    """
+    name = (library or "").strip()
+    if (guid or "").strip():
+        normal = typelibs.normal_guid(guid)
+        if normal is None:
+            raise ToolError(f"{guid!r} is not a GUID. It looks like {{420B2830-E718-11CF-...}}.")
+        spec: dict[str, Any] = {"guid": normal}
+        registered = typelibs.search(normal, limit=1)
+        if version.strip():
+            parsed = typelibs.parse_version(version)
+            if parsed is None:
+                raise ToolError(
+                    f"{version!r} is not a version. Give major.minor in hexadecimal, such as 1.0."
+                )
+            spec["major"], spec["minor"] = parsed
+        elif registered:
+            spec["major"], spec["minor"] = registered[0].major, registered[0].minor
+        if registered:
+            spec["path"] = registered[0].path
+            spec["description"] = registered[0].description
+            name = name or typelibs.library_name(registered[0])
+        if not name:
+            raise ToolError(
+                "Give library as the name code uses to qualify it, such as Scripting: the "
+                "library is not registered here, so its own name cannot be read."
+            )
+        spec["name"] = name
+        return spec
+
+    if name.casefold() in _OFFICE_LIBRARIES:
+        return {"name": name}
+
+    if not typelibs.available():
+        raise ToolError(
+            f"Looking {name!r} up needs Windows, where type libraries are registered. Pass its "
+            "guid and version, with library as the name code uses to qualify it."
+        )
+    found = typelibs.resolve(name)
+    if isinstance(found, list):
+        if not found:
+            raise ToolError(
+                f"No type library registered on this machine matches {name!r}. Check the "
+                "name in the VBA editor's Tools > References, or pass its guid and version."
+            )
+        listed = "; ".join(
+            f"{lib.description} ({lib.guid} {lib.version})" for lib in found[:10]
+        )
+        more = f", and {len(found) - 10} more" if len(found) > 10 else ""
+        raise ToolError(
+            f"{name!r} matches {len(found)} registered libraries: {listed}{more}. Pass the "
+            "exact description, or its guid."
+        )
+    own_name = typelibs.library_name(found)
+    if not own_name:
+        raise ToolError(
+            f"{found.description} is registered as {found.guid} {found.version}, but the name "
+            "code uses for it could not be read, which needs pywin32. Call again with that "
+            "guid and library set to the name, such as Scripting."
+        )
+    return {
+        "name": own_name,
+        "guid": found.guid,
+        "major": found.major,
+        "minor": found.minor,
+        "path": found.path,
+        "description": found.description,
+    }
+
+
+def _reference_refusal(text: str, info: Any) -> str:
+    """pyOpenVBA's refusal, said in terms of what the agent should do next."""
+    lowered = text.casefold()
+    if "implicit project library" in lowered:
+        return (
+            f"{info.title}'s own library and VBA's are part of every {info.title} project "
+            "without a reference, which is why the References dialog shows them ticked and "
+            f"greyed. Nothing to add. ({text})"
+        )
+    if "microsoft forms is required" in lowered:
+        return (
+            f"{text}. Without Microsoft Forms nothing in a project with a UserForm compiles, "
+            "so the reference stays while a form does."
+        )
+    if "different guid" in lowered:
+        return f"{text}. Remove the existing reference first, or pick another library."
+    return f"The reference was refused: {text}"
 
 
 def _reference(reference: Any) -> dict[str, Any]:

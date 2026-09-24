@@ -77,13 +77,16 @@ def register(server: MCPServer, settings: Settings) -> None:
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
             has_project = project_layer.has_project(handle, info)
+            referenced = project_layer.referenced_hosts(handle, info)
         prepared = project_layer.analysis_inputs(modules)
         by_name = {item.name.casefold(): item for item in prepared}
         bodies = {m.name.casefold(): m.body for m in modules}
 
         try:
             by_module = analyze_project(
-                [item.module_input for item in prepared], host=_analysis_host(info)
+                [item.module_input for item in prepared],
+                host=_analysis_host(info),
+                referenced_hosts=referenced,
             )
         except Exception as exc:
             raise ToolError(
@@ -193,13 +196,15 @@ def register(server: MCPServer, settings: Settings) -> None:
             ModuleInput(module_name=module_name, module_kind=module_kind, source=source)
         ]
         resolved_host = host.strip().lower() or None
+        referenced: list[str] | None = None
 
         if file_path.strip():
             path = resolve_path(file_path, settings)
             info = require_readable(path)
-            resolved_host = info.host
+            resolved_host = _analysis_host(info)
             with project_layer.open_project(path, info) as handle:
                 modules = project_layer.read_modules(handle, info)
+                referenced = project_layer.referenced_hosts(handle, info)
             inputs.extend(
                 item.module_input
                 for item in project_layer.analysis_inputs(modules)
@@ -211,7 +216,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 f"{host!r} is not a host. Use 'excel', 'word', 'powerpoint' or 'access'."
             )
 
-        by_module = analyze_project(inputs, host=resolved_host)
+        by_module = analyze_project(inputs, host=resolved_host, referenced_hosts=referenced)
         diagnostics = by_module.get(module_name, [])
         # The caller's own source is analyzed exactly as given, so there is no
         # header to shift by here.

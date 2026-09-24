@@ -422,11 +422,19 @@ def _manage(
         if height:
             options["height"] = int(height) if info.host == "access" else height
         maker = handle.add_report if design == "report" else handle.add_form
+        # pyOpenVBA 6.1.2 references Microsoft Forms with a first UserForm, as the
+        # editor does, since code naming its types does not compile without it.
+        # Saying so tells the agent why the reference list changed.
+        before = _reference_names(handle, info)
         try:
             created = maker(name, **options)
         except Exception as exc:
             raise ToolError(f"The {design} could not be created: {exc}") from exc
-        return {"form": created.name, "design": design, "created": True}
+        detail: dict[str, Any] = {"form": created.name, "design": design, "created": True}
+        added = sorted(_reference_names(handle, info) - before)
+        if added:
+            detail["references_added"] = added
+        return detail
 
     # Renaming and deleting have to move the designer storage and the code
     # module together. Access does; nothing here can for a UserForm.
@@ -466,6 +474,14 @@ def _manage(
     except Exception as exc:
         raise ToolError(f"The {kind} could not be deleted: {exc}") from exc
     return {"deleted": found.name, "design": kind}
+
+
+def _reference_names(handle: Any, info: Any) -> set[str]:
+    """The names of the libraries a project references, for telling what changed."""
+    try:
+        return {str(ref.name) for ref in project_layer.references(handle, info)}
+    except Exception:
+        return set()
 
 
 def _forms(handle: Any, host_title: str) -> list[Any]:

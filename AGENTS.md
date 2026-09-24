@@ -91,6 +91,7 @@ xlsx.py           the OOXML package surface the drawing layer still needs
 grid.py           the same, through Excel, for the formats that are not OOXML
 shapes.py         the drawing layer: buttons, shapes, and the macros they run
 vb6.py            a .vbp read as a project, through the same surface
+typelibs.py       the type libraries registered on this machine, for references
 locks.py          which process holds a locked file, and what frees it
 office_apps.py    a file in the user's own Office application, from a worker process
 xlide_vscode.py   telling a running XLIDE for VS Code what a tool changed
@@ -169,7 +170,7 @@ Rules the surface holds to, each of which has a conformance case behind it:
   implementation that reported a computed value it did not compute would be
   lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 23 of the 84 conformance cases
+A refusal is as much of the contract as a success: 24 of the 88 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

@@ -335,6 +335,18 @@ FIXTURES: dict[str, Any] = {
     },
 }
 
+WORD_CODE = CRLF.join(
+    [
+        "Option Explicit",
+        "",
+        "Public Sub Report()",
+        "    Dim doc As Word.Document",
+        "    Set doc = Nothing",
+        "End Sub",
+        "",
+    ]
+)
+
 
 def case(
     case_id: str,
@@ -1980,8 +1992,8 @@ def cases() -> list[dict[str, Any]]:
 
 
 def _cases_since_1_1() -> list[dict[str, Any]]:
-    """What 1.1 added: files with no project, and signatures. Kept together so a
-    port can see the new work."""
+    """What 1.1 added: files with no project, signatures, and references. Kept
+    together so a port can see the new work."""
     out: list[dict[str, Any]] = []
 
     # ------------------------------------------------ a file with no project
@@ -2098,6 +2110,72 @@ def _cases_since_1_1() -> list[dict[str, Any]]:
                 step("xlide_project_info", {"file_path": "${fixture}"}),
             ],
             [{"path": "digitally_signed", "equals": False}],
+        )
+    )
+
+    # -------------------------------------------------------------- references
+    out.append(
+        case(
+            "references.an-office-library-is-added-by-name",
+            "A reference is a GUID and a version, and a wrong one is a reference the host "
+            "marks MISSING. The four Office libraries need no lookup.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_reference",
+                    {"file_path": "${fixture}", "action": "add", "library": "Word"},
+                ),
+                step("xlide_list_references", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "references", "contains": "{00020905-0000-0000-C000-000000000046}"}],
+        )
+    )
+    out.append(
+        case(
+            "references.the-hosts-own-library-is-implicit",
+            "Excel's library is part of every Excel project without a reference, which is "
+            "why the References dialog shows it ticked and greyed. Adding it twice is refused.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_reference",
+                    {"file_path": "${fixture}", "action": "add", "library": "Excel"},
+                    error_contains="without a reference",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "analysis.a-library-the-project-does-not-reference-is-an-error",
+            "Word.Document in a workbook with no reference to Word does not compile. The "
+            "analyzer is given the project's references, so it says so.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Reports", "source": WORD_CODE},
+                ),
+                step("xlide_analyze", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "problems", "contains": "missing-library-reference"}],
+        )
+    )
+    out.append(
+        case(
+            "forms.a-new-form-references-microsoft-forms",
+            "The VBA editor references Microsoft Forms when it inserts a UserForm, and the "
+            "names a form's own event procedures use are its types: without it they do not "
+            "compile, as the editor's compiler confirmed.",
+            "workbook",
+            [
+                step(
+                    "xlide_manage_form",
+                    {"file_path": "${fixture}", "action": "create", "form_name": "Wizard"},
+                ),
+                step("xlide_list_references", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "references", "contains": "{0D452EE1-E08F-101A-852E-02608C4D0BB4}"}],
         )
     )
 

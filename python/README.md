@@ -115,7 +115,7 @@ and the document it lives in.
 | Modules | `xlide_list_modules`, `xlide_read_module`, `xlide_write_module`, `xlide_rename_module`, `xlide_delete_module`, `xlide_list_procedures`, `xlide_search_modules` |
 | Analysis | `xlide_analyze`, `xlide_analyze_source`, `xlide_rules` |
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_manage_form`, `xlide_edit_form` |
-| Catalog | `xlide_list_references`, `xlide_access_catalog` |
+| References and catalog | `xlide_list_references`, `xlide_manage_reference`, `xlide_access_catalog` |
 | Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
 
 *The document around it*
