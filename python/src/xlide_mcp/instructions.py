@@ -45,20 +45,24 @@ files are copies and go stale. Never report a module as changed because you wrot
 exported copy.
 - Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. \
 Those edits corrupt the file or drop its code silently.
-- Do not drive Office with COM automation of your own, and never open, close or kill an \
-Office application the user is running. xlide_run_macro and xlide_run_tests use an \
-instance this server owns and holds a deadline over.
+- Do not drive Office with COM automation of your own. xlide_run_macro and \
+xlide_run_tests use an instance this server owns and holds a deadline over. To open or \
+close a file in the user's own application, use xlide_open_in_app and \
+xlide_close_in_app, which act on that one file.
 - Read the code you are about to change, and change only what the task needs.
 - Ask the user before anything hard to undo: deleting a module, a form or a query, \
-overwriting cells that hold data, or writing to a project that is password-protected or \
-digitally signed. A signed project loses its signature on any macro change.
+overwriting cells that hold data, writing to a project that is password-protected or \
+digitally signed, closing a file that holds unsaved work, or ending a process. A signed \
+project loses its signature on any macro change.
 - Keep VBA source ASCII unless the user asks otherwise.
 - To show the user what you changed, use the diff a write returns: it is taken from \
 the file read back after saving, so it is what the file now holds rather than what you \
 meant to write. xlide_git_changes does the same against a git revision, and covers \
 Power Query as well as VBA. Neither compares cell values.
-- A write fails while the file is open in its Office application. Tell the user; do not \
-close the application for them.
+- A write fails while the file is open in its Office application, and the refusal names \
+what holds it. xlide_is_open says whether that copy is read-only and whether it holds \
+unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and \
+reopened around the write; anything else is the user's to close.
 - Access runs its compiled project, so a module written here takes effect when Access \
 next opens the database.
 - Cell values read from the file are what Excel last calculated. A formula you write, \

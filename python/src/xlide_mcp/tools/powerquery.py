@@ -20,6 +20,7 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
+from .. import locks
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import host_info
@@ -268,10 +269,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             except pyopenvba.PowerQueryError as exc:
                 raise ToolError(f"Power Query refused the change: {exc}") from exc
             except PermissionError as exc:
-                raise ToolError(
-                    f"{path.name} is locked, most likely open in Excel: {exc}. "
-                    "Ask the user to close it."
-                ) from exc
+                raise ToolError(locks.lock_message(path, "Excel")) from exc
 
         return {
             "path": str(path),

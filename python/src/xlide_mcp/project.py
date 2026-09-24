@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from . import locks
 from .errors import ToolError
 from .hosts import HostInfo, container, require_readable
 from .tokens import content_token
@@ -233,6 +234,7 @@ def save(
     handle: Any,
     info: HostInfo,
     *,
+    path: Path | None = None,
     allow_protected: bool = False,
     allow_invalidate_signature: bool = False,
 ) -> list[str]:
@@ -240,6 +242,7 @@ def save(
 
     A refused save raises with the flag that would allow it named, because the
     decision is the user's and the agent needs to be able to describe it to them.
+    `path` names the file in a lock refusal: pyOpenVBA's handles do not carry it.
     """
     import pyopenvba
 
@@ -259,11 +262,12 @@ def save(
             # AccessError, which is not a VBAProjectError.
             raise _save_refusal(exc, info) from exc
         except PermissionError as exc:
-            raise ToolError(
-                f"The file is locked, most likely open in {info.title}: {exc}. "
-                f"Ask the user to close it in {info.title} and try again. Do not close "
-                "an application the user is running."
-            ) from exc
+            if path is None:
+                raise ToolError(
+                    f"The file is locked, most likely open in {info.title}. Nothing was "
+                    f"written. Ask the user to close it in {info.title} and try again."
+                ) from exc
+            raise ToolError(locks.lock_message(path, info.title)) from exc
         except OSError as exc:
             raise ToolError(f"The file could not be written: {exc}.") from exc
     return [str(w.message) for w in caught]

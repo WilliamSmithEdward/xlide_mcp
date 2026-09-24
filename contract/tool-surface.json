@@ -1,6 +1,6 @@
 {
   "contract_version": "1.0.3",
-  "digest": "sha256:4a9272037e2b0c41ffe3f2785125edcc76af5197abc9f994551b4c17284a6864",
+  "digest": "sha256:e9def99c4eaddbd443eaf722d71b9da6f69ab27106a8d4b2d3a3e8ed341c68ed",
   "generated_with": {
     "upstream": {
       "pyOfficeEditor": "0.3.0",
@@ -11,10 +11,10 @@
   },
   "reference_implementation": "python",
   "server": {
-    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own, and never open, close or kill an Office application the user is running. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, or writing to a project that is password-protected or digitally signed. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application. Tell the user; do not close the application for them.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
+    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over. To open or close a file in the user's own application, use xlide_open_in_app and xlide_close_in_app, which act on that one file.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, writing to a project that is password-protected or digitally signed, closing a file that holds unsaved work, or ending a process. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application, and the refusal names what holds it. xlide_is_open says whether that copy is read-only and whether it holds unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and reopened around the write; anything else is the user's to close.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 49,
+  "tool_count": 52,
   "tools": [
     {
       "annotations": {
@@ -135,6 +135,48 @@
       },
       "name": "xlide_analyze_source",
       "title": "Analyze VBA source"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Closes a file in the Office application the user has it open in, which frees it for a write. Only that file: the application stays, unless this server started the instance and nothing else is open in it. A copy holding unsaved work is left open and reported, unless save_changes saves it first or discard_changes closes it without saving; losing the user's work is their decision, so ask them. When the application does not answer, or the file stays locked, end_process ends the process Windows says holds the file, and every unsaved document in that process is lost with it: ask the user first. Where the user was in the file is remembered, and xlide_open_in_app puts them back there. Windows only.",
+      "input_schema": {
+        "properties": {
+          "discard_changes": {
+            "default": false,
+            "description": "Close without saving, losing unsaved changes. Ask the user first.",
+            "title": "Discard Changes",
+            "type": "boolean"
+          },
+          "end_process": {
+            "default": false,
+            "description": "If the application does not answer, or the file stays locked, end the process holding it. Loses unsaved work in every document open in it. Ask the user first.",
+            "title": "End Process",
+            "type": "boolean"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "save_changes": {
+            "default": false,
+            "description": "Save unsaved changes before closing. Not for a read-only copy.",
+            "title": "Save Changes",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "close_in_appArguments",
+        "type": "object"
+      },
+      "name": "xlide_close_in_app",
+      "title": "Close in Office"
     },
     {
       "annotations": {
@@ -660,6 +702,30 @@
       },
       "name": "xlide_import_modules",
       "title": "Import modules from files"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Says whether a file is open in its Office application, in any running instance: read-only or for editing, with unsaved changes or not, and which processes hold it locked. Call it when a write reports the file is locked, before closing anything, or when the user asks. Windows only. Changes nothing.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "is_openArguments",
+        "type": "object"
+      },
+      "name": "xlide_is_open",
+      "title": "Is the file open in Office"
     },
     {
       "annotations": {
@@ -1533,6 +1599,48 @@
       },
       "name": "xlide_manage_validation",
       "title": "Data validation"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Opens a file in its Office application on the user's screen, for them to see or work in: after a change they should look at, or to put back a copy xlide_close_in_app closed. Already open, it is brought forward instead. read_only opens a copy that cannot be saved over the file, and new_instance a separate Excel or Word the user's other files are not in. bring_to_front=false reopens it behind whatever the user is doing. Macros follow the user's Trust Center settings, as for a file they open themselves. Windows only.",
+      "input_schema": {
+        "properties": {
+          "bring_to_front": {
+            "default": true,
+            "description": "Bring its window forward. False leaves it behind.",
+            "title": "Bring To Front",
+            "type": "boolean"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "new_instance": {
+            "default": false,
+            "description": "Open it in a new instance of the application rather than the one running. PowerPoint has only one; Access always gets its own.",
+            "title": "New Instance",
+            "type": "boolean"
+          },
+          "read_only": {
+            "default": false,
+            "description": "Open a copy that cannot be saved over it.",
+            "title": "Read Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "open_in_appArguments",
+        "type": "object"
+      },
+      "name": "xlide_open_in_app",
+      "title": "Open in Office"
     },
     {
       "annotations": {

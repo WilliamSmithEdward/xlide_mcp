@@ -133,6 +133,11 @@ and the document it lives in.
 
 `xlide_run_macro`, `xlide_run_vba`, `xlide_run_tests`, `xlide_compile_check`
 
+**Your Office applications** - Windows with the desktop application, and only on
+the file named.
+
+`xlide_is_open`, `xlide_open_in_app`, `xlide_close_in_app`
+
 **Live editor** - a running
 [xlide_vbide](https://github.com/WilliamSmithEdward/xlide_vbide) session inside
 the Visual Basic Editor.
@@ -201,8 +206,10 @@ them whether or not the user configured anything.
 - A read returns a content token. Pass it back on the write, and the write is
   refused if anything changed the module in between.
 - Analysis after every change, and an error is a build failure.
-- Nothing opens, closes or touches an Office application the user is running. A
-  run happens in an instance the server created and can therefore terminate.
+- A run happens in an Office instance the server created and can therefore
+  terminate. The user's own applications are touched only through the three
+  tools above, on the file named: unsaved work is closed only when the call
+  says to save or discard it, and a process is ended only when asked.
 - Anything hard to undo is the user's decision: deleting a module, overwriting
   cells that hold data, writing to a project that is signed or
   password-protected.

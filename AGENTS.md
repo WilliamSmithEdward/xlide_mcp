@@ -91,6 +91,8 @@ xlsx.py           the OOXML package surface the drawing layer still needs
 grid.py           the same, through Excel, for the formats that are not OOXML
 shapes.py         the drawing layer: buttons, shapes, and the macros they run
 vb6.py            a .vbp read as a project, through the same surface
+locks.py          which process holds a locked file, and what frees it
+office_apps.py    a file in the user's own Office application, from a worker process
 errors.py         the one error type, and the helpers that build its message
 tools/
   discovery.py    list, summarize, validate, create, doctor
@@ -106,12 +108,13 @@ tools/
   sync.py         export and import .bas/.cls, previewed
   vcs.py          what changed inside the file since a git revision
   execution.py    macros, tests and compile checks in real Office
+  office.py       the file in the user's own Office: is it open, open it, close it
   live.py         a running xlide_vbide session in the VBE
 ```
 
 Tool groups are split by what they reach, because that is also how they fail: the
-file layer works anywhere, execution needs Windows with the application, and the
-live layer needs the VBE add-in running.
+file layer works anywhere, execution and the office tools need Windows with the
+application, and the live layer needs the VBE add-in running.
 
 ## Before you change a tool
 
@@ -146,9 +149,14 @@ Rules the surface holds to, each of which has a conformance case behind it:
   the containment check, and is refused outside the workspace roots.
 - **A write is guarded.** A read returns a content token; a write with a stale one
   is refused and the refusal carries the current token, so recovery is one step.
-- **Nothing touches an application the user is running.** A run happens in an
-  instance the server created, which is the only reason it can enforce a deadline
-  by terminating it.
+- **Nothing touches an application the user is running, unless asked to.** A run
+  happens in an instance the server created, which is the only reason it can
+  enforce a deadline by terminating it. The three office tools are the exception
+  the user asked for, and they act on the one file named: a copy holding unsaved
+  work is closed only with save_changes or discard_changes, an application is
+  quit only if this server started it and nothing else is open in it, and a
+  process is ended only with end_process, only the one Windows names as holding
+  the file, and only if it is that file's own application.
 - **Hard-to-undo things are the user's decision.** Deleting a module, overwriting
   cells that hold data, writing to a signed or password-protected project.
 - **No result is claimed that was not observed.** Nothing in the files layer

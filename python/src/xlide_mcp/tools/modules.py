@@ -359,6 +359,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             save_warnings = project_layer.save(
                 handle,
                 info,
+                path=path,
                 allow_protected=allow_protected,
                 allow_invalidate_signature=allow_invalidate_signature,
             )
@@ -443,6 +444,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             save_warnings = project_layer.save(
                 handle,
                 info,
+                path=path,
                 allow_protected=allow_protected,
                 allow_invalidate_signature=allow_invalidate_signature,
             )
@@ -517,6 +519,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             save_warnings = project_layer.save(
                 handle,
                 info,
+                path=path,
                 allow_protected=allow_protected,
                 allow_invalidate_signature=allow_invalidate_signature,
             )

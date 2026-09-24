@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import locks
 from .errors import ToolError
 
 # One read's ceiling. A grid larger than this is not one an agent reasons about;
@@ -85,6 +86,8 @@ def open_workbook(path: Path) -> Any:
         return excel.Workbook.open(path)
     except PyOfficeEditorError as exc:
         raise CellsError(f"{path.name}: {exc}") from exc
+    except PermissionError as exc:
+        raise CellsError(locks.lock_message(path, "Excel", reading=True)) from exc
     except OSError as exc:
         raise CellsError(f"{path.name} could not be opened: {exc}") from exc
 
@@ -97,19 +100,21 @@ def editing(path: Path) -> Iterator[Any]:
     saving for itself, so that a save is never the step somebody forgot and a
     failure half way through never leaves a saved file behind.
     """
-    from pyofficeeditor.exceptions import PyOfficeEditorError
-
     with open_workbook(path) as book:
         yield book
-        try:
-            book.save()
-        except PyOfficeEditorError as exc:
-            raise CellsError(f"{path.name} could not be saved: {exc}") from exc
-        except PermissionError as exc:
-            raise CellsError(
-                f"{path.name} is locked, most likely open in Excel: {exc}. "
-                "Ask the user to close it."
-            ) from exc
+        save(book, path)
+
+
+def save(book: Any, path: Path) -> None:
+    """Save a workbook, or refuse naming what holds it."""
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    try:
+        book.save()
+    except PyOfficeEditorError as exc:
+        raise CellsError(f"{path.name} could not be saved: {exc}") from exc
+    except PermissionError as exc:
+        raise CellsError(locks.lock_message(path, "Excel")) from exc
 
 
 def sheet_named(book: Any, name: str) -> Any:
@@ -193,7 +198,7 @@ def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -
                 cell = sheet.cell(first.row + row_offset, first.column + column_offset)
                 _put(cell, raw)
                 written += 1
-        book.save()
+        save(book, path)
 
     return WriteResult(
         sheet=sheet.name,

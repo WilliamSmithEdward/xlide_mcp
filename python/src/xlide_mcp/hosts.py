@@ -258,6 +258,12 @@ def open_container(path: Path, info: HostInfo | None = None) -> Any:
         return container_class(resolved)(path)
     except pyopenvba.PyOpenVBAError as exc:
         raise ToolError(f"{path.name}: {exc}") from exc
+    except PermissionError as exc:
+        # Something holds the file without even sharing it for reading. Saying
+        # who is the difference between an answer and "Error executing tool".
+        from .locks import lock_message
+
+        raise ToolError(lock_message(path, resolved.title, reading=True)) from exc
 
 
 class container:

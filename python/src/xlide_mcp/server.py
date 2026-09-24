@@ -29,6 +29,7 @@ from .tools import (
     forms,
     live,
     modules,
+    office,
     powerquery,
     sheets,
     structure,
@@ -50,6 +51,7 @@ _REGISTRARS = (
     sync.register,
     vcs.register,
     execution.register,
+    office.register,
     live.register,
 )
 
