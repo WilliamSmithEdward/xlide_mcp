@@ -70,6 +70,28 @@ def test_a_module_round_trips_in_an_access_database(
     assert "n * 3" in again["source"]
 
 
+def test_a_protected_access_project_is_a_refusal_that_names_the_flag(
+    call: Callable[..., Any], database: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Access refuses the save with its own AccessError, not the VBAProjectError the
+    other hosts raise, and that went past the handler as a bare "Error executing
+    tool" rather than the refusal every other host gives."""
+    import pyopenvba
+
+    monkeypatch.setattr(pyopenvba.AccessDatabase, "vba_is_protected", lambda self: True)
+    before = database.read_bytes()
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_write_module",
+            file_path=str(database),
+            module_name="Helpers",
+            source=ACCESS_MODULE.replace("n * 2", "n * 3"),
+        )
+    assert "password-protected" in refusal.value.message
+    assert "allow_protected=true" in refusal.value.message
+    assert database.read_bytes() == before
+
+
 def test_a_module_can_be_created_and_deleted_in_an_access_database(
     call: Callable[..., Any], database: Path
 ) -> None:

@@ -254,7 +254,9 @@ def save(
         warnings.simplefilter("always")
         try:
             handle.save(**options)
-        except pyopenvba.VBAProjectError as exc:
+        except pyopenvba.PyOpenVBAError as exc:
+            # The base class: Access refuses a protected project with its own
+            # AccessError, which is not a VBAProjectError.
             raise _save_refusal(exc, info) from exc
         except PermissionError as exc:
             raise ToolError(
