@@ -16,6 +16,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from .. import project as project_layer
+from .. import xlide_vscode
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
@@ -395,6 +396,17 @@ def register(server: MCPServer, settings: Settings) -> None:
                 result["diff_truncated"] = True
         if save_warnings:
             result["warnings"] = save_warnings
+        notice = xlide_vscode.module_written(
+            path,
+            after.name,
+            before=before,
+            before_existed=not created,
+            after=after.body,
+            kind=after.kind,
+            tool="xlide_write_module",
+        )
+        if notice:
+            result["xlide_vscode"] = notice
         result["next_step"] = (
             "Call xlide_analyze on this file and fix anything at error severity."
         )
@@ -466,6 +478,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                 f"{len(orphaned)} shapes name a procedure in {module.name}, and nothing "
                 "rewrites an OnAction. Repoint them with xlide_set_shape_macro."
             )
+        notice = xlide_vscode.module_renamed(
+            path, module.name, new_name, tool="xlide_rename_module"
+        )
+        if notice:
+            result["xlide_vscode"] = notice
         return result
 
     @server.tool(
@@ -539,6 +556,19 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "rewrites an OnAction. Point them elsewhere with xlide_set_shape_macro, or "
                 "tell the user which buttons have stopped working."
             )
+        # The deleted text goes with the notice, so XLIDE can offer to put it back.
+        notice = xlide_vscode.module_written(
+            path,
+            module.name,
+            before=module.body,
+            before_existed=True,
+            after="",
+            after_exists=False,
+            kind=module.kind,
+            tool="xlide_delete_module",
+        )
+        if notice:
+            result["xlide_vscode"] = notice
         return result
 
 

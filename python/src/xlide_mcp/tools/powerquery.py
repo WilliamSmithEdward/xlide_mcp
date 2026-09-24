@@ -20,7 +20,7 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
-from .. import locks
+from .. import locks, xlide_vscode
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import host_info
@@ -270,6 +270,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 raise ToolError(f"Power Query refused the change: {exc}") from exc
             except PermissionError as exc:
                 raise ToolError(locks.lock_message(path, "Excel")) from exc
+        xlide_vscode.file_changed(path, "queries", tool="xlide_write_query")
 
         return {
             "path": str(path),

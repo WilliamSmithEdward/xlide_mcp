@@ -93,6 +93,7 @@ shapes.py         the drawing layer: buttons, shapes, and the macros they run
 vb6.py            a .vbp read as a project, through the same surface
 locks.py          which process holds a locked file, and what frees it
 office_apps.py    a file in the user's own Office application, from a worker process
+xlide_vscode.py   telling a running XLIDE for VS Code what a tool changed
 errors.py         the one error type, and the helpers that build its message
 tools/
   discovery.py    list, summarize, validate, create, doctor
@@ -114,7 +115,9 @@ tools/
 
 Tool groups are split by what they reach, because that is also how they fail: the
 file layer works anywhere, execution and the office tools need Windows with the
-application, and the live layer needs the VBE add-in running.
+application, and the live layer needs the VBE add-in running. XLIDE for VS Code
+is not a layer: when it is running, every write tells it what changed, and when
+it is not, nothing notices (docs/xlide-vscode-bridge.md).
 
 ## Before you change a tool
 

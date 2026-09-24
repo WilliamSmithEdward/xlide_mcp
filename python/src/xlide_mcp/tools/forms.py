@@ -23,6 +23,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from .. import project as project_layer
+from .. import xlide_vscode
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
@@ -213,6 +214,9 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "Add controls with xlide_edit_form, and write the event procedures with "
                 f"xlide_write_module on the module named {detail.get('form', form_name)!r}."
             )
+        notice = xlide_vscode.file_changed(path, "forms", tool="xlide_manage_form")
+        if notice:
+            result["xlide_vscode"] = notice
         return result
 
     @server.tool(
@@ -376,6 +380,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if save_warnings:
             result["warnings"] = save_warnings
+        notice = xlide_vscode.file_changed(path, "forms", tool="xlide_edit_form")
+        if notice:
+            result["xlide_vscode"] = notice
         return result
 
 

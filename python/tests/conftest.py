@@ -57,6 +57,24 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def no_real_xlide(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Keep every test away from an XLIDE window the developer has open.
+
+    Tool writes tell a running XLIDE for VS Code what changed. A suite that found
+    the real one would post a test's writes into the developer's project tree,
+    so discovery is pointed at an empty folder unless a test sets up its own.
+    """
+    from xlide_mcp import xlide_vscode
+
+    empty = tmp_path_factory.mktemp("no-xlide")
+    monkeypatch.setattr(xlide_vscode, "_discovery_directory", lambda: empty)
+    monkeypatch.delenv(xlide_vscode.ENVIRONMENT, raising=False)
+    xlide_vscode.forget()
+
+
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     return tmp_path

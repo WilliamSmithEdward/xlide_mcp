@@ -20,6 +20,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from .. import project as project_layer
+from .. import xlide_vscode
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
@@ -270,7 +271,43 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if save_warnings:
             result["warnings"] = save_warnings
+        notice = _tell_xlide(path, info, changing, by_name)
+        if notice:
+            result["xlide_vscode"] = notice
         return result
+
+
+def _tell_xlide(
+    path: Path,
+    info: Any,
+    changing: list[tuple[str, str, Path, str]],
+    before: dict[str, project_layer.ModuleView],
+) -> dict[str, Any] | None:
+    """One review per module the import changed, when XLIDE is running to show it.
+
+    The after text is read back from the file, as a write's diff is, because that
+    is what XLIDE will find there when it compares before a revert.
+    """
+    if not changing or not xlide_vscode.windows():
+        return None
+    with project_layer.open_project(path, info) as handle:
+        after = {m.name.casefold(): m for m in project_layer.read_modules(handle, info)}
+    notice: dict[str, Any] | None = None
+    for _action, name, _item, _text in changing:
+        now = after.get(name.casefold())
+        if now is None:
+            continue
+        earlier = before.get(name.casefold())
+        notice = xlide_vscode.module_written(
+            path,
+            now.name,
+            before=earlier.body if earlier else "",
+            before_existed=earlier is not None,
+            after=now.body,
+            kind=now.kind,
+            tool="xlide_import_modules",
+        ) or notice
+    return notice
 
 
 def _refuse_vb6(info: Any, operation: str) -> None:

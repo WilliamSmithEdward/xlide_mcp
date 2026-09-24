@@ -196,6 +196,12 @@ would corrupt.
 Both routes cover VBA, Power Query and the sheet inventory. Cell values are not
 included, and the rendered text says so on its first line.
 
+Inside VS Code beside XLIDE, every write also tells a running XLIDE what
+changed, so a module an agent wrote is marked in XLIDE's project tree with its
+diff and Keep and Revert, as XLIDE's own agent edits are. It needs an XLIDE that
+listens for this; the protocol is
+[docs/xlide-vscode-bridge.md](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/docs/xlide-vscode-bridge.md).
+
 ## The rules it works by
 
 These are in the server's own instructions, so every agent that connects reads

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import locks
+from . import locks, xlide_vscode
 from .errors import ToolError
 
 # One read's ceiling. A grid larger than this is not one an agent reasons about;
@@ -106,7 +106,11 @@ def editing(path: Path) -> Iterator[Any]:
 
 
 def save(book: Any, path: Path) -> None:
-    """Save a workbook, or refuse naming what holds it."""
+    """Save a workbook, or refuse naming what holds it.
+
+    A running XLIDE is told, so its tree shows the change without waiting on a
+    file watcher; it keeps no review for the document surface, only for code.
+    """
     from pyofficeeditor.exceptions import PyOfficeEditorError
 
     try:
@@ -115,6 +119,7 @@ def save(book: Any, path: Path) -> None:
         raise CellsError(f"{path.name} could not be saved: {exc}") from exc
     except PermissionError as exc:
         raise CellsError(locks.lock_message(path, "Excel")) from exc
+    xlide_vscode.file_changed(path, "document")
 
 
 def sheet_named(book: Any, name: str) -> Any:

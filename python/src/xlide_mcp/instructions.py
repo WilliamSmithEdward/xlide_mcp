@@ -68,5 +68,7 @@ next opens the database.
 - Cell values read from the file are what Excel last calculated. A formula you write, \
 and anything depending on a cell you write, keeps its old result until Excel next opens \
 the workbook. Do not report a result Excel has not calculated.
+- When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the \
+user can see the change and keep or revert it in XLIDE's project tree. Say so.
 - Report what you changed, how you verified it, and what the user still has to do.
 """

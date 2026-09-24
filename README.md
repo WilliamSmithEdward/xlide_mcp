@@ -201,6 +201,14 @@ git config diff.vba.cachetextconv true
 
 That is `git diff` on a `.xlsm`. `git show` and `git log -p` convert too.
 
+Inside VS Code beside [XLIDE](https://github.com/WilliamSmithEdward/xlide_vscode),
+there is a third way. Every write tells a running XLIDE what changed, and a
+module write carries its before and after, so XLIDE marks the module as an agent
+edit in its project tree, opens the diff, and offers Keep and Revert, as it does
+for its own agent tools. It needs an XLIDE that listens for this;
+[docs/xlide-vscode-bridge.md](docs/xlide-vscode-bridge.md) is the protocol. With
+no XLIDE running, nothing changes.
+
 `binary diff=vba` rather than `diff=vba` alone. The `binary` macro means
 `-diff -merge -text`, and the later `diff=vba` overrides only its `-diff`, so the
 file keeps `-text` and git never applies end-of-line conversion to a container it
