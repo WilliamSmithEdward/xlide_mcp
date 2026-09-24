@@ -1,6 +1,6 @@
 {
   "contract_version": "1.0.3",
-  "digest": "sha256:149232aa96e10626209370afa4b4e6e401c99b6774f93dab1ebb2ddb28a6901c",
+  "digest": "sha256:ba6f659e1178374df0f275fded3ed7c3a8899b59c4a12701f8fca2ed3a693ae8",
   "generated_with": {
     "upstream": {
       "pyOfficeEditor": "0.3.0",
@@ -11,10 +11,10 @@
   },
   "reference_implementation": "python",
   "server": {
-    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over. To open or close a file in the user's own application, use xlide_open_in_app and xlide_close_in_app, which act on that one file.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, writing to a project that is password-protected or digitally signed, closing a file that holds unsaved work, or ending a process. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application, and the refusal names what holds it. xlide_is_open says whether that copy is read-only and whether it holds unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and reopened around the write; anything else is the user's to close.\n- A macro-enabled file saved before its first macro has no VBA project. That is normal: the listings answer empty, and xlide_write_module gives the file its project.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, keeps its old result until Excel next opens the workbook. Do not report a result Excel has not calculated.\n- When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the user can see the change and keep or revert it in XLIDE's project tree. Say so.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
+    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files, and the document around them: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over. To open or close a file in the user's own application, use xlide_open_in_app and xlide_close_in_app, which act on that one file.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, writing to a project that is password-protected or digitally signed, closing a file that holds unsaved work, or ending a process. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application, and the refusal names what holds it. xlide_is_open says whether that copy is read-only and whether it holds unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and reopened around the write; anything else is the user's to close.\n- A macro-enabled file saved before its first macro has no VBA project. That is normal: the listings answer empty, and xlide_write_module gives the file its project.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, has no current result in the file until Excel next opens it. xlide_read_cells with calculate=true works results out with a formula engine and names any cell it could not; report those as Excel's cached values.\n- When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the user can see the change and keep or revert it in XLIDE's project tree. Say so.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 53,
+  "tool_count": 58,
   "tools": [
     {
       "annotations": {
@@ -51,6 +51,98 @@
       },
       "name": "xlide_access_catalog",
       "title": "Access tables and queries"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": false,
+        "read_only": false
+      },
+      "description": "Adds a chart of a block of cells to a worksheet and saves the workbook, written as Excel's Insert Chart writes one of the same type. The block's first row names the series and its first column holds the categories, as Excel reads a selection; a block taller than it is wide makes a series of each column. The data can be on another sheet, as Data!A1:C13. Place it with cell or left and top in points. xlide_list_shapes reports it afterwards with each series' formula.",
+      "input_schema": {
+        "properties": {
+          "cell": {
+            "default": "",
+            "description": "The chart's top-left cell, such as H2.",
+            "title": "Cell",
+            "type": "string"
+          },
+          "chart_name": {
+            "default": "",
+            "description": "Its name. Empty gives Chart 1, Chart 2 and so on.",
+            "title": "Chart Name",
+            "type": "string"
+          },
+          "chart_type": {
+            "default": "column",
+            "description": "column, bar, line, lineMarkers, pie, doughnut, scatter or area.",
+            "title": "Chart Type",
+            "type": "string"
+          },
+          "data_range": {
+            "description": "The block to chart, header row and category column included.",
+            "title": "Data Range",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "height": {
+            "default": 0.0,
+            "description": "Points. 0 gives Excel's 216.",
+            "minimum": 0,
+            "title": "Height",
+            "type": "number"
+          },
+          "left": {
+            "default": -1.0,
+            "description": "Without cell: points from the left.",
+            "title": "Left",
+            "type": "number"
+          },
+          "series_in": {
+            "default": "",
+            "description": "'columns' or 'rows' to say which way the series run. Empty decides.",
+            "title": "Series In",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet the chart goes on.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "description": "The title. Empty keeps Excel's automatic one.",
+            "title": "Title",
+            "type": "string"
+          },
+          "top": {
+            "default": -1.0,
+            "description": "Without cell: points from the top.",
+            "title": "Top",
+            "type": "number"
+          },
+          "width": {
+            "default": 0.0,
+            "description": "Points. 0 gives Excel's 360.",
+            "minimum": 0,
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "data_range"
+        ],
+        "title": "add_chartArguments",
+        "type": "object"
+      },
+      "name": "xlide_add_chart",
+      "title": "Add a chart"
     },
     {
       "annotations": {
@@ -411,6 +503,48 @@
     },
     {
       "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Works out what a formula would give in a cell of a workbook, without writing it there: to check a formula before xlide_write_cells, or to ask the workbook a question, such as =SUMIFS(Sales[Amount],Sales[Region],\"West\"). Uses pyOfficeEditor's formula engine, 493 of Excel's functions, with the workbook's cells as they stand. A formula written for one cell answers with one value, as Excel would give it there. Changes nothing. .xlsx, .xlsm and .xlam.",
+      "input_schema": {
+        "properties": {
+          "at": {
+            "default": "A1",
+            "description": "The cell it is imagined in, which relative references count from.",
+            "title": "At",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "formula": {
+            "description": "The formula, with or without its '='.",
+            "title": "Formula",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet the formula is evaluated on.",
+            "title": "Sheet",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "formula"
+        ],
+        "title": "evaluate_formulaArguments",
+        "type": "object"
+      },
+      "name": "xlide_evaluate_formula",
+      "title": "Evaluate a formula"
+    },
+    {
+      "annotations": {
         "destructive": true,
         "idempotent": true,
         "read_only": false
@@ -568,6 +702,12 @@
             "default": null,
             "description": "Strikethrough on or off.",
             "title": "Strike"
+          },
+          "style": {
+            "default": "",
+            "description": "A named cell style, applied first: one of Excel's own, such as Good, Bad, Neutral, Title, Heading 1, Total, Input, Output, Note or 20% - Accent1, or one the workbook defines. It sets only the parts the style includes.",
+            "title": "Style",
+            "type": "string"
           },
           "underline": {
             "anyOf": [
@@ -881,7 +1021,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists what sits on a worksheet's drawing layer: buttons, form controls, AutoShapes, text boxes, pictures, charts and groups, each with the cells it covers and, where it has one, the macro a click runs. Call it when asked how a workbook is started, or before renaming a Sub: a button's OnAction names a procedure and nothing rewrites it. ActiveX controls are listed but have no macro; their code is event procedures in the sheet's module.",
+      "description": "Lists what sits on a worksheet's drawing layer: buttons, form controls, AutoShapes, text boxes, pictures, charts and groups, each with the cells it covers, its position in points and, where it has one, the macro a click runs. A form control also carries what it holds: a check box's state, a list's chosen item, a spinner's value and bounds, the cell it is linked to. Call it when asked how a workbook is started, or before renaming a Sub: a button's OnAction names a procedure and nothing rewrites it. ActiveX controls are listed but have no macro; their code is event procedures in the sheet's module.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -911,7 +1051,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the worksheets in an Excel file with their used ranges, whether each is hidden, and the workbook's named ranges. Call this before reading cells, so the range you ask for is one that holds data. Works on .xlsx, .xlsm and .xlam; a .xlsb or .xls keeps its grid in a binary format this server does not read.",
+      "description": "Lists the worksheets in an Excel file with their used ranges, whether each is hidden, and the pivot tables on each, the chart sheets, and the workbook's named ranges. Call this before reading cells, so the range you ask for is one that holds data. Works on .xlsx, .xlsm and .xlam; a .xlsb or .xls keeps its grid in a binary format, and Excel answers for those on Windows.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -1057,6 +1197,78 @@
         "idempotent": true,
         "read_only": false
       },
+      "description": "Lists, writes, answers or removes the comments on a worksheet's cells. Excel has two kinds: a note, the yellow box that shows on hover, and a threaded comment, the conversation on the Review tab with replies and a resolved state. action='list' reads both and changes nothing. 'set' writes a note, replacing one already on the cell, or with kind='thread' starts a conversation; 'reply' and 'resolve' act on a thread; 'remove' takes either kind off the cell. Use a note to explain a cell to whoever reads the workbook next.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, set, reply, resolve or remove.",
+            "title": "Action",
+            "type": "string"
+          },
+          "author": {
+            "default": "Agent",
+            "description": "Who wrote it, as the workbook shows the name.",
+            "title": "Author",
+            "type": "string"
+          },
+          "cell": {
+            "default": "",
+            "description": "The cell, such as B4. For list, empty lists the sheet.",
+            "title": "Cell",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "kind": {
+            "default": "note",
+            "description": "For set: 'note' or 'thread'.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resolved": {
+            "default": true,
+            "description": "For resolve: false opens a thread again.",
+            "title": "Resolved",
+            "type": "boolean"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "description": "For set and reply: what the comment says.",
+            "title": "Text",
+            "type": "string"
+          },
+          "visible": {
+            "default": false,
+            "description": "For a note: shown all the time, not only on hover.",
+            "title": "Visible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet"
+        ],
+        "title": "manage_commentArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_comment",
+      "title": "Notes and comments"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
       "description": "Lists, adds or clears conditional formatting: the rules that colour cells by what is in them. rule='cell_is' with an operator and a value paints cells that compare true; rule='expression' takes a formula written for the top-left cell of the range and applied relatively, the way Excel's 'Use a formula' box works; rule='color_scale' and 'data_bar' are the gradient and in-cell bar. The paint itself is the fill and font arguments, which is what Excel calls a differential format.",
       "input_schema": {
         "properties": {
@@ -1147,6 +1359,96 @@
       },
       "name": "xlide_manage_conditional_format",
       "title": "Conditional formatting"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Lists, sets, reapplies or clears the autofilter on a worksheet or on an Excel table, and hides the rows it filters out. Excel does not apply a filter when it opens a workbook: it shows the rows as the file marks them, so the rows are worked out here, held to what Excel keeps. action='list' reads the filters and changes nothing. 'set' filters one column and keeps what the others already filter by; call it once per column. Give criteria as VBA's Range.AutoFilter spells Criteria1 and Criteria2: '>=10', '=North', '=*east*', '=' for blanks, '<>' for anything; or top for the top N items (negative for the bottom), or dynamic for aboveAverage, thisMonth, Q1 and the like. 'reapply' filters again after the data changed; 'clear' removes the filter and shows every row.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "default": "list",
+            "description": "list, set, reapply or clear.",
+            "title": "Action",
+            "type": "string"
+          },
+          "cell_range": {
+            "default": "",
+            "description": "For set on a sheet: the block with its header row, such as A1:F200. Empty keeps the range of the filter already there.",
+            "title": "Cell Range",
+            "type": "string"
+          },
+          "column": {
+            "default": "",
+            "description": "For set: the column, by header text or by number from 1 in the range.",
+            "title": "Column",
+            "type": "string"
+          },
+          "criteria1": {
+            "default": "",
+            "description": "For set: Criteria1, such as '>=10' or '=West'.",
+            "title": "Criteria1",
+            "type": "string"
+          },
+          "criteria2": {
+            "default": "",
+            "description": "For set: Criteria2, such as '<100'.",
+            "title": "Criteria2",
+            "type": "string"
+          },
+          "dynamic": {
+            "default": "",
+            "description": "For set: aboveAverage, belowAverage, today, yesterday, tomorrow, thisWeek, lastWeek, nextWeek, thisMonth, lastMonth, nextMonth, thisQuarter, lastQuarter, nextQuarter, thisYear, lastYear, nextYear, yearToDate, Q1 to Q4 or M1 to M12.",
+            "title": "Dynamic",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "match_all": {
+            "default": true,
+            "description": "With two criteria: true keeps rows meeting both, false either.",
+            "title": "Match All",
+            "type": "boolean"
+          },
+          "percent": {
+            "default": false,
+            "description": "top counts percent rather than items.",
+            "title": "Percent",
+            "type": "boolean"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "table": {
+            "default": "",
+            "description": "Filter this Excel table rather than a range.",
+            "title": "Table",
+            "type": "string"
+          },
+          "top": {
+            "default": 0,
+            "description": "For set: keep the top N items, or with a negative N the bottom N.",
+            "title": "Top",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet"
+        ],
+        "title": "manage_filterArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_filter",
+      "title": "Autofilters"
     },
     {
       "annotations": {
@@ -1474,6 +1776,122 @@
         "idempotent": true,
         "read_only": false
       },
+      "description": "Adds a Forms control, an AutoShape, a text box, a line or a picture to a worksheet, or removes one, and saves the workbook. The usual case is a button that runs a macro: kind='button', a caption in text, and the procedure in macro as Proc or Module.Proc, written first. Place it with cell, its top-left cell, or with left and top in points; width and height are points, with a size to start from when left at 0. Check boxes, option buttons, lists and drop-downs take linked_cell, and lists and drop-downs list_range. A Forms control lives in four parts that have to agree, and they are written and removed together. Removing a shape that runs a macro leaves the macro; removing a chart is not offered. Excel workbooks only; .xlsx, .xlsm and .xlam.",
+      "input_schema": {
+        "properties": {
+          "action": {
+            "description": "'add' or 'remove'.",
+            "title": "Action",
+            "type": "string"
+          },
+          "cell": {
+            "default": "",
+            "description": "For add: the top-left cell, such as B2.",
+            "title": "Cell",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Excel file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "geometry": {
+            "default": "",
+            "description": "For kind='shape': the preset, such as rect, roundRect or ellipse.",
+            "title": "Geometry",
+            "type": "string"
+          },
+          "height": {
+            "default": 0.0,
+            "description": "Points. 0 picks one.",
+            "minimum": 0,
+            "title": "Height",
+            "type": "number"
+          },
+          "image_path": {
+            "default": "",
+            "description": "For kind='picture': a PNG, JPEG or GIF file.",
+            "title": "Image Path",
+            "type": "string"
+          },
+          "kind": {
+            "default": "button",
+            "description": "For add: button, checkBox, optionButton, dropDown, listBox, scrollBar, spinner, label, groupBox, shape, textBox, line or picture.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "left": {
+            "default": -1.0,
+            "description": "For add without cell: points from the left.",
+            "title": "Left",
+            "type": "number"
+          },
+          "linked_cell": {
+            "default": "",
+            "description": "The cell a control writes its value to: $D$6.",
+            "title": "Linked Cell",
+            "type": "string"
+          },
+          "list_range": {
+            "default": "",
+            "description": "The cells a list or drop-down offers: $H$1:$H$9.",
+            "title": "List Range",
+            "type": "string"
+          },
+          "macro": {
+            "default": "",
+            "description": "The procedure a click runs: Proc or Module.Proc.",
+            "title": "Macro",
+            "type": "string"
+          },
+          "shape_name": {
+            "description": "The shape's name: new for add, as listed for remove.",
+            "title": "Shape Name",
+            "type": "string"
+          },
+          "sheet": {
+            "description": "Worksheet name, matched without case.",
+            "title": "Sheet",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "description": "A control's caption, a shape's text, or a picture's alt text.",
+            "title": "Text",
+            "type": "string"
+          },
+          "top": {
+            "default": -1.0,
+            "description": "For add without cell: points from the top.",
+            "title": "Top",
+            "type": "number"
+          },
+          "width": {
+            "default": 0.0,
+            "description": "Points. 0 picks one.",
+            "minimum": 0,
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "file_path",
+          "sheet",
+          "action",
+          "shape_name"
+        ],
+        "title": "manage_shapeArguments",
+        "type": "object"
+      },
+      "name": "xlide_manage_shape",
+      "title": "Add or remove a shape or button"
+    },
+    {
+      "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
       "description": "Adds, removes, renames, moves, hides, shows, protects or unprotects a worksheet. Renaming rewrites the formulas and defined names that referred to the old name, so nothing breaks. Removing a sheet takes its cells, tables and everything on it, and formulas elsewhere that pointed at it become #REF!, which has no undo: ask the user first. Protecting a sheet stops editing in Excel; it is not a security boundary and the password is trivially recovered. Works on .xlsx, .xlsm, .xlam.",
       "input_schema": {
         "properties": {
@@ -1762,9 +2180,15 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Reads a range of cells from a worksheet and returns a grid of values, formulas, or both. Values are what Excel last calculated and stored, so a formula whose inputs changed outside Excel shows its old result. Ask for formulas when you need to understand what a sheet computes, and values when you need what it currently shows. At most 20,000 cells per call.",
+      "description": "Reads a range of cells from a worksheet and returns a grid of values, formulas, both, or the text each cell shows under its number format. Values are what Excel last calculated and stored, so a formula whose inputs changed outside Excel shows its old result; calculate=true works every formula out first with pyOfficeEditor's formula engine, in memory, and names any cell it could not work out. Ask for formulas to understand what a sheet computes, and values for what it shows. At most 20,000 cells per call.",
       "input_schema": {
         "properties": {
+          "calculate": {
+            "default": false,
+            "description": "Work every formula out before reading, with the formula engine. The file is not changed. Use it after writing inputs, to see the results now.",
+            "title": "Calculate",
+            "type": "boolean"
+          },
           "cell_range": {
             "description": "A1-style range, such as A1:D50, or a single cell.",
             "title": "Cell Range",
@@ -1777,7 +2201,7 @@
           },
           "include": {
             "default": "values",
-            "description": "'values', 'formulas' or 'both'.",
+            "description": "'values', 'formulas', 'both', 'text' for what each cell shows, such as 12.5% or 1/15/2024, or 'rich_text' for the font runs of text written in more than one font.",
             "title": "Include",
             "type": "string"
           },
@@ -2222,7 +2646,7 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Changes which macro an existing shape or button runs when clicked, and saves the workbook. An empty macro clears the link. Use it after writing a Sub, so a button actually calls it, and after renaming one, because nothing rewrites an OnAction. Give the procedure as Proc or Module.Proc; it must already exist in the project, so write it first. This changes an existing shape only: adding or deleting one is not offered, because a form control lives in four parts that have to agree and a wrong one produces a workbook Excel repairs on open.",
+      "description": "Changes which macro an existing shape or button runs when clicked, and saves the workbook. An empty macro clears the link. Use it after writing a Sub, so a button actually calls it, and after renaming one, because nothing rewrites an OnAction. Give the procedure as Proc or Module.Proc; it must already exist in the project, so write it first. To add a button with its macro, or to remove one, use xlide_manage_shape.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -2288,11 +2712,11 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Writes a rectangular block of values and formulas into a worksheet, starting at one cell, and saves the file. Each row of data is a row of the sheet. A string starting with '=' is written as a formula, as you would type it into Excel 365 with no _xlfn prefixes; anything else is a value. A value written over a formula removes that formula, which is what typing into the cell does. Only the rows you touch are rewritten, so charts, styles, pivot caches and the VBA project are untouched. Ask the user before overwriting cells that hold data. Nothing recalculates until Excel next opens the workbook.",
+      "description": "Writes a rectangular block of values and formulas into a worksheet, starting at one cell, and saves the file. Each row of data is a row of the sheet. A string starting with '=' is written as a formula, as you would type it into Excel 365 with no _xlfn prefixes; anything else is a value. A cell given as {\"rich_text\": [{\"text\": \"Total \", \"bold\": true}, {\"text\": \"42\"}]} is text in more than one font. A value written over a formula removes that formula, which is what typing into the cell does. Only the rows you touch are rewritten, so charts, styles, pivot caches and the VBA project are untouched. Ask the user before overwriting cells that hold data. The file keeps no calculated result until Excel next opens it; xlide_read_cells with calculate=true works the results out now.",
       "input_schema": {
         "properties": {
           "data": {
-            "description": "Rows of cell values. Numbers, strings, booleans, null for empty, and strings starting with '=' for formulas.",
+            "description": "Rows of cell values. Numbers, strings, booleans, null for empty, strings starting with '=' for formulas, and {\"rich_text\": [runs]} for text in several fonts, each run a text with any of bold, italic, strike, underline, size, font, color (RRGGBB) and script.",
             "items": {
               "items": {},
               "type": "array"

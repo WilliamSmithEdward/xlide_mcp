@@ -21,12 +21,18 @@ Excel keeps shapes in two eras, and both are read here.
 The layout was taken from XLIDE's `xlsxShapes.ts`, which measured it against
 files Excel 16 saved.
 
-The one write here is narrow on purpose: an existing shape's macro can be changed
-or cleared, and nothing is created or destroyed. That is what keeps it safe.
-Adding or removing a form control means keeping four parts in agreement, and
-getting that wrong produces a workbook that opens and then repairs itself, so it
-is not offered. Changing a value on parts that already exist has no such failure,
-and Excel was made to open the result and read the macro back.
+Writing is pyOfficeEditor's. Since 0.3 it adds, removes and repoints shapes,
+and keeps a form control's four parts in agreement while it does, which is the
+format knowledge this server should never have held. The reader stays for now,
+because pyOfficeEditor's shapes do not yet carry four things list_shapes has
+always answered and the conformance corpus pins: the cells an anchor covers,
+alt text, the hidden flag, and ActiveX controls. What pyOfficeEditor reads that
+this does not - a control's state and every shape's position in points - is
+merged in by name. When its shapes carry the four, this reader and xlsx.py go
+together (WilliamSmithEdward/pyOfficeEditor#4).
+
+One write stays here with the reader: the macro on a control Excel 2007 saved,
+which lives only in the VML, where pyOfficeEditor does not look.
 """
 
 from __future__ import annotations
@@ -487,6 +493,506 @@ def _display_macro(stored: str) -> str:
     return _WORKBOOK_PREFIX.sub("", stored or "").strip()
 
 
+def _int(value: str | None) -> int:
+    try:
+        return int(value or 0)
+    except ValueError:
+        return 0
+
+
+# --------------------------------------------------------------------- writing
+#
+# Every write goes through pyOfficeEditor, which keeps a form control's four
+# parts in agreement - the drawing, the sheet's <controls> entry, the ctrlProp
+# part and the VML shape - and takes all four away together. This module used to
+# write the macro link itself, part by part, and still does for the one kind of
+# control pyOfficeEditor does not reach, at the end of this file.
+
+# The kinds list_shapes reports, as pyOfficeEditor's add calls spell them.
+CONTROL_KINDS = {
+    "button": "Button",
+    "checkBox": "CheckBox",
+    "optionButton": "Radio",
+    "dropDown": "Drop",
+    "listBox": "List",
+    "scrollBar": "Scroll",
+    "spinner": "Spin",
+    "label": "Label",
+    "groupBox": "GBox",
+}
+DRAWING_KINDS = frozenset({"shape", "textBox", "line"})
+ADDABLE_KINDS = (*CONTROL_KINDS, *sorted(DRAWING_KINDS), "picture")
+
+# A size to start from, in points, when none is given. Nothing about these is
+# measured: they are big enough to see and click, and the user resizes from there.
+DEFAULT_SIZE = {
+    "button": (72.0, 24.0),
+    "checkBox": (96.0, 18.0),
+    "optionButton": (96.0, 18.0),
+    "dropDown": (96.0, 18.0),
+    "listBox": (96.0, 72.0),
+    "scrollBar": (18.0, 72.0),
+    "spinner": (18.0, 36.0),
+    "label": (72.0, 18.0),
+    "groupBox": (144.0, 96.0),
+    "shape": (96.0, 48.0),
+    "textBox": (144.0, 36.0),
+    "line": (96.0, 0.0),
+}
+
+# Excel's answers for a check box or an option button.
+_CHECK_STATES = {1: True, -4146: False, 2: "mixed"}
+
+
+def set_shape_macro(
+    path: Path, sheet_name: str, shape_name: str, macro: str
+) -> dict[str, Any]:
+    """Point an existing shape at a different macro, or at none.
+
+    A form control stores its macro twice, in its VML shape and in the sheet's
+    `<controls>` entry, and Excel reads both; pyOfficeEditor writes both. A
+    workbook index already on the link, the `[1]` in `[1]!Module1.Go`, is kept.
+    A control Excel 2007 saved lives only in the VML drawing, where pyOfficeEditor
+    does not look, and its macro is written there directly, as it always was.
+    """
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    from . import cells
+
+    wanted = (macro or "").strip()
+    try:
+        with cells.editing(path) as book:
+            sheet = cells.sheet_named(book, sheet_name)
+            shape = _find_shape(sheet, shape_name)
+            previous = _display_macro(shape.macro)
+            try:
+                sheet.set_shape_macro(shape.name, wanted)
+            except (PyOfficeEditorError, KeyError, ValueError) as exc:
+                raise ToolError(f"The macro on {shape.name!r} could not be set: {exc}") from exc
+            written = (
+                ["form control (sheet entry)", "form control (VML)"]
+                if shape.control is not None
+                else ["drawing"]
+            )
+            canonical = sheet.name
+    except _NotOnSheet as missing:
+        legacy = _set_legacy_macro(path, missing.sheet, shape_name, wanted)
+        if legacy is None:
+            raise
+        return legacy
+    return {
+        "sheet": canonical,
+        "shape": shape.name,
+        "macro": wanted,
+        "previous_macro": previous,
+        "parts_written": written,
+        "cleared": not wanted,
+    }
+
+
+def add_shape(
+    path: Path,
+    sheet_name: str,
+    *,
+    name: str,
+    kind: str,
+    cell: str = "",
+    left: float | None = None,
+    top: float | None = None,
+    width: float = 0.0,
+    height: float = 0.0,
+    text: str = "",
+    macro: str = "",
+    linked_cell: str = "",
+    list_range: str = "",
+    geometry: str = "",
+    image: Path | None = None,
+) -> dict[str, Any]:
+    """Put a form control, an AutoShape, a text box, a line or a picture on a sheet."""
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    from . import cells
+
+    if kind not in ADDABLE_KINDS:
+        raise ToolError(f"kind {kind!r} cannot be added. Use one of: {', '.join(ADDABLE_KINDS)}.")
+    with cells.editing(path) as book:
+        sheet = cells.sheet_named(book, sheet_name)
+        clash = next(
+            (s for s in _walk(sheet.shapes) if s.name.casefold() == name.casefold()), None
+        )
+        if clash is not None:
+            raise ToolError(f"{sheet.name} already has a shape named {clash.name!r}.")
+        if cell.strip():
+            x, y = _cell_origin(sheet, cell)
+        elif left is not None and top is not None:
+            x, y = left, top
+        else:
+            raise ToolError("Give cell, the top-left cell, or both left and top in points.")
+        default_width, default_height = DEFAULT_SIZE.get(kind, (96.0, 48.0))
+        try:
+            if kind in CONTROL_KINDS:
+                added = sheet.add_form_control(
+                    name,
+                    left=x,
+                    top=y,
+                    width=width or default_width,
+                    height=height or default_height,
+                    kind=CONTROL_KINDS[kind],
+                    text=text,
+                    macro=macro.strip(),
+                    linked_cell=linked_cell.strip(),
+                    list_range=list_range.strip(),
+                )
+            elif kind in DRAWING_KINDS:
+                added = sheet.add_shape(
+                    name,
+                    left=x,
+                    top=y,
+                    width=width or default_width,
+                    height=height or default_height,
+                    kind=kind,
+                    geometry=geometry.strip(),
+                    text=text,
+                    macro=macro.strip(),
+                )
+            else:
+                if image is None:
+                    raise ToolError("A picture needs image_path: a PNG, JPEG or GIF file.")
+                added = sheet.add_picture(
+                    name,
+                    image,
+                    left=x,
+                    top=y,
+                    width=width or None,
+                    height=height or None,
+                    description=text,
+                )
+        except ToolError:
+            raise
+        except (PyOfficeEditorError, KeyError, ValueError, OSError) as exc:
+            raise ToolError(f"The {kind} could not be added: {exc}") from exc
+        canonical = sheet.name
+    return {"sheet": canonical, "added": _position(added) | {"name": added.name, "kind": kind}}
+
+
+def remove_shape(path: Path, sheet_name: str, shape_name: str) -> dict[str, Any]:
+    """Take a shape off a sheet, with every part that belongs to it.
+
+    Refused wherever pyOfficeEditor would take less than that, or cannot reach
+    the shape: a chart, whose part it leaves behind (WilliamSmithEdward/
+    pyOfficeEditor#3); a group holding a chart, a control or a picture, whose
+    parts it leaves behind too (#5 there); a member of a group, which it does not
+    reach; and a control kept only in VML, which it does not reach either.
+    """
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    from . import cells
+
+    try:
+        with cells.editing(path) as book:
+            sheet = cells.sheet_named(book, sheet_name)
+            shape = _find_shape(sheet, shape_name)
+            if shape.kind == "chart":
+                raise ToolError(
+                    "Removing a chart is not offered yet: pyOfficeEditor takes the chart's "
+                    "anchor off the drawing and leaves the chart part behind. Ask the user to "
+                    "delete it in Excel."
+                )
+            group = next(
+                (
+                    top
+                    for top in sheet.shapes
+                    if any(member.name == shape.name for member in _walk(top.children))
+                ),
+                None,
+            )
+            if group is not None:
+                raise ToolError(
+                    f"{shape.name!r} is inside the group {group.name!r}, and pyOfficeEditor "
+                    "removes a shape that stands on its own, not a member of a group. Nothing "
+                    "was removed. Ask the user to ungroup it in Excel first."
+                )
+            stranded = [
+                member.name
+                for member in _walk(shape.children)
+                if member.kind == "chart" or member.control is not None or member.image
+            ]
+            if stranded:
+                raise ToolError(
+                    f"{shape.name!r} is a group holding {', '.join(map(repr, stranded))}, and "
+                    "pyOfficeEditor takes a group off the drawing without the chart, control "
+                    "and picture parts of what is in it, which would be left in the file. "
+                    "Nothing was removed. Ask the user to delete it in Excel."
+                )
+            try:
+                sheet.remove_shape(shape.name)
+            except (PyOfficeEditorError, KeyError, ValueError) as exc:
+                raise ToolError(f"{shape.name!r} could not be removed: {exc}") from exc
+            canonical = sheet.name
+    except _NotOnSheet as missing:
+        listed = read_sheet_shapes(path, missing.sheet).get(missing.sheet, [])
+        if any(entry.name == shape_name for entry in listed):
+            raise ToolError(
+                f"{shape_name!r} is a form control kept only in the sheet's VML drawing, as "
+                "Excel 2007 saves one, and pyOfficeEditor removes a control through the "
+                "drawing a later Excel writes. Nothing was removed. Ask the user to delete it "
+                "in Excel."
+            ) from missing
+        raise
+    return {
+        "sheet": canonical,
+        "removed": shape.name,
+        "had_macro": _display_macro(shape.macro),
+    }
+
+
+def control_states(path: Path) -> dict[str, dict[str, dict[str, Any]]]:
+    """Where each shape sits in points, and what each form control holds, by sheet.
+
+    What pyOfficeEditor reads that the drawing-layer reader above does not: a
+    check box's state, a list's selected item, a spinner's value and bounds. It
+    is merged into list_shapes by name.
+    """
+    from . import cells
+
+    states: dict[str, dict[str, dict[str, Any]]] = {}
+    with cells.open_workbook(path) as book:
+        for sheet in book.sheets:
+            by_name: dict[str, dict[str, Any]] = {}
+            for shape in _walk(sheet.shapes):
+                entry: dict[str, Any] = {"position": _position(shape)}
+                entry.update(_control_state(shape.control))
+                by_name[shape.name.casefold()] = entry
+            for chart in sheet.charts:
+                by_name.setdefault(chart.name.casefold(), {})["chart"] = chart_summary(chart)
+            states[sheet.name] = by_name
+    return states
+
+
+def chart_summary(chart: Any) -> dict[str, Any]:
+    """A chart's type, title and series, each series as Excel's formula bar shows it."""
+    entry: dict[str, Any] = {"type": list(chart.kinds)}
+    if chart.title:
+        entry["title"] = chart.title
+    entry["series"] = [
+        {
+            key: value
+            for key, value in (
+                ("name", series.name),
+                ("values", series.values),
+                ("categories", series.categories),
+                ("formula", _series_formula(series)),
+            )
+            if value
+        }
+        for series in chart.series
+    ]
+    return entry
+
+
+def _series_formula(series: Any) -> str:
+    try:
+        return str(series.formula or "")
+    except Exception:
+        return ""
+
+
+CHART_TYPES = ("column", "bar", "line", "lineMarkers", "pie", "doughnut", "scatter", "area")
+
+
+def add_chart(
+    path: Path,
+    sheet_name: str,
+    *,
+    data: str,
+    chart_type: str,
+    cell: str = "",
+    left: float | None = None,
+    top: float | None = None,
+    width: float = 0.0,
+    height: float = 0.0,
+    title: str = "",
+    name: str = "",
+    series_in: str = "",
+) -> dict[str, Any]:
+    """A chart of a block of cells, written as Excel's Insert Chart writes one."""
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    from . import cells
+
+    kind = next((t for t in CHART_TYPES if t.casefold() == chart_type.strip().casefold()), None)
+    if kind is None:
+        raise ToolError(f"chart_type must be one of: {', '.join(CHART_TYPES)}.")
+    arrangement = series_in.strip().lower() or None
+    if arrangement not in {None, "columns", "rows"}:
+        raise ToolError("series_in must be 'columns', 'rows' or empty.")
+    with cells.editing(path) as book:
+        sheet = cells.sheet_named(book, sheet_name)
+        if cell.strip():
+            x, y = _cell_origin(sheet, cell)
+        elif left is not None and top is not None:
+            x, y = left, top
+        else:
+            raise ToolError("Give cell, the top-left cell, or both left and top in points.")
+        try:
+            chart = sheet.add_chart(
+                kind,
+                data.strip(),
+                left=x,
+                top=y,
+                width=width or 360.0,
+                height=height or 216.0,
+                title=title.strip() or None,
+                name=name.strip() or None,
+                series_in=arrangement,
+            )
+        except (PyOfficeEditorError, KeyError, ValueError) as exc:
+            raise ToolError(f"The chart could not be added: {exc}") from exc
+        canonical = sheet.name
+    return {"sheet": canonical, "chart": {"name": chart.name, **chart_summary(chart)}}
+
+
+def _control_state(control: Any) -> dict[str, Any]:
+    if control is None:
+        return {}
+    kind = str(control.kind)
+    state: dict[str, Any] = {}
+    if kind in {"CheckBox", "Radio"}:
+        state["checked"] = _CHECK_STATES.get(control.value, bool(control.value))
+    elif kind in {"Drop", "List"}:
+        # Excel counts the chosen item from 1, and 0 is nothing chosen.
+        state["selected_item"] = control.value
+    elif kind in {"Spin", "Scroll"}:
+        state["value"] = control.value
+        if control.minimum is not None:
+            state["minimum"] = control.minimum
+        if control.maximum is not None:
+            state["maximum"] = control.maximum
+    return state
+
+
+def _position(shape: Any) -> dict[str, Any]:
+    return {
+        "left": round(float(shape.left), 2),
+        "top": round(float(shape.top), 2),
+        "width": round(float(shape.width), 2),
+        "height": round(float(shape.height), 2),
+    }
+
+
+def _walk(shapes: Any) -> list[Any]:
+    """Every shape, a group's members after the group."""
+    out: list[Any] = []
+    for shape in shapes:
+        out.append(shape)
+        out.extend(_walk(shape.children))
+    return out
+
+
+class _NotOnSheet(ToolError):
+    """No shape by that name in the drawing pyOfficeEditor reads."""
+
+    def __init__(self, message: str, sheet: str) -> None:
+        super().__init__(message)
+        self.sheet = sheet
+
+
+def _find_shape(sheet: Any, name: str) -> Any:
+    """A shape by its exact name, or by a name matched without case when that is unique."""
+    everything = _walk(sheet.shapes)
+    exact = [shape for shape in everything if shape.name == name]
+    if exact:
+        return exact[0]
+    folded = [shape for shape in everything if shape.name.casefold() == name.casefold()]
+    if len(folded) == 1:
+        return folded[0]
+    listed = ", ".join(shape.name for shape in everything) or "(none)"
+    raise _NotOnSheet(
+        f"No shape named {name!r} on {sheet.name}. Shapes there: {listed}.", sheet.name
+    )
+
+
+def _cell_origin(sheet: Any, reference: str) -> tuple[float, float]:
+    """Where a cell's top-left corner is, in points, on pyOfficeEditor's own grid.
+
+    The grid it turns a position back into an anchor with, a sheet's default
+    column width included, so a shape placed at a cell lands on that cell. It is
+    private until pyOfficeEditor takes a cell for a position
+    (WilliamSmithEdward/pyOfficeEditor#4).
+    """
+    from pyofficeeditor.excel._shapes import SheetGrid
+
+    from . import cells
+
+    corner = cells.cell_reference(sheet, reference)
+    grid = SheetGrid.of(sheet._root)
+    return grid.x(corner.column - 1), grid.y(corner.row - 1)
+
+
+# ------------------------------------------------ a control kept only in VML
+#
+# Excel 2007 writes a form control as a VML shape and nothing else, and later
+# Excels keep reading it. pyOfficeEditor reaches a control through the DrawingML
+# twin a later Excel writes beside the VML, so for these the macro is written
+# where the reader above finds it, part by part, as this module always did.
+
+
+def _set_legacy_macro(
+    path: Path, sheet_name: str, shape_name: str, macro: str
+) -> dict[str, Any] | None:
+    """Point a VML-only form control at a macro; None when no such control has the name."""
+    book = Workbook(path)
+    canonical = book.canonical_sheet_name(sheet_name)
+    sheet_part = next(s.part for s in book.sheets() if s.name == canonical)
+    sheet_xml = book.part_text(sheet_part)
+    relationships = book.part_relationships(sheet_part)
+    written: list[str] = []
+    previous = ""
+
+    vml_part = _related_part(sheet_xml, relationships, "legacyDrawing", _RELATIONSHIP_VML)
+    vml = book.optional_part_text(vml_part) if vml_part else None
+    if vml_part and vml is not None:
+        shape_ids = _control_shape_ids(sheet_xml, shape_name)
+        updated, found, before = _set_vml_macro(vml, shape_name, shape_ids, macro)
+        if found:
+            previous = before
+            if updated != vml:
+                book.set_part_text(vml_part, updated)
+            written.append("form control (VML)")
+
+    updated_sheet, found, before = _set_control_macro(sheet_xml, shape_name, macro)
+    if found:
+        previous = previous or before
+        if updated_sheet != sheet_xml:
+            book.set_part_text(sheet_part, updated_sheet)
+        written.append("form control (sheet entry)")
+
+    if not written:
+        return None
+    _save_package(book, path)
+    return {
+        "sheet": canonical,
+        "shape": shape_name,
+        "macro": macro,
+        "previous_macro": _display_macro(previous),
+        "parts_written": written,
+        "cleared": not macro,
+    }
+
+
+def _save_package(book: Workbook, path: Path) -> None:
+    """Save through the package reader, as cells.save does through pyOfficeEditor."""
+    from . import locks, xlide_vscode
+
+    try:
+        book.save()
+    except XlsxError as exc:
+        if isinstance(exc.__cause__, PermissionError):
+            raise ToolError(locks.lock_message(path, "Excel")) from exc
+        raise ToolError(str(exc)) from exc
+    xlide_vscode.file_changed(path, "document")
+
+
 def _stored_macro(wanted: str, previous: str) -> str:
     """The macro as the file should store it, keeping whatever prefix was there.
 
@@ -499,109 +1005,6 @@ def _stored_macro(wanted: str, previous: str) -> str:
         return ""
     match = _WORKBOOK_PREFIX.match(previous or "")
     return (match.group(0) if match else "") + wanted
-
-
-# --------------------------------------------------------------------- writing
-
-
-def set_shape_macro(
-    path: Path, sheet_name: str, shape_name: str, macro: str
-) -> dict[str, Any]:
-    """Point an existing shape at a different macro, or at none.
-
-    Deliberately narrow. This changes a value on parts that already exist and
-    creates or destroys nothing, which is what keeps it safe: adding or removing
-    a form control means keeping four parts in agreement, and getting that wrong
-    produces a workbook that opens and then repairs itself.
-
-    A form control stores its macro twice, in its VML shape and in the sheet's
-    `<controls>` entry, and Excel reads both. Writing one and not the other
-    leaves a button whose behaviour depends on which one Excel happens to trust.
-    """
-    book = Workbook(path)
-    canonical = book.canonical_sheet_name(sheet_name)
-    sheet_part = next(s.part for s in book.sheets() if s.name == canonical)
-    sheet_xml = book.part_text(sheet_part)
-    relationships = book.part_relationships(sheet_part)
-
-    wanted = (macro or "").strip()
-    written: list[str] = []
-    previous = ""
-
-    # The drawing part: the macro is an attribute on the shape's own element.
-    drawing_part = _related_part(sheet_xml, relationships, "drawing", _RELATIONSHIP_DRAWING)
-    if drawing_part:
-        drawing_xml = book.optional_part_text(drawing_part)
-        if drawing_xml is not None:
-            updated, found, before = _set_drawing_macro(drawing_xml, shape_name, wanted)
-            if found:
-                previous = previous or before
-                if updated != drawing_xml:
-                    book.set_part_text(drawing_part, updated)
-                written.append("drawing")
-
-    # The form control: the same value in its VML shape and in the sheet entry.
-    control_shape_ids = _control_shape_ids(sheet_xml, shape_name)
-    vml_part = _related_part(sheet_xml, relationships, "legacyDrawing", _RELATIONSHIP_VML)
-    if vml_part:
-        vml = book.optional_part_text(vml_part)
-        if vml is not None:
-            updated, found, before = _set_vml_macro(
-                vml, shape_name, control_shape_ids, wanted
-            )
-            if found:
-                previous = previous or before
-                if updated != vml:
-                    book.set_part_text(vml_part, updated)
-                written.append("form control (VML)")
-
-    updated_sheet, found, before = _set_control_macro(sheet_xml, shape_name, wanted)
-    if found:
-        previous = previous or before
-        if updated_sheet != sheet_xml:
-            book.set_part_text(sheet_part, updated_sheet)
-        written.append("form control (sheet entry)")
-
-    if not written:
-        existing = read_sheet_shapes(path, canonical).get(canonical, [])
-        listed = ", ".join(shape.name for shape in existing) or "(none)"
-        raise ToolError(
-            f"No shape named {shape_name!r} on {canonical}. Shapes there: {listed}."
-        )
-
-    book.save()
-    return {
-        "sheet": canonical,
-        "shape": shape_name,
-        "macro": wanted,
-        "previous_macro": _display_macro(previous),
-        "parts_written": written,
-        "cleared": not wanted,
-    }
-
-
-def _set_drawing_macro(xml: str, shape_name: str, macro: str) -> tuple[str, bool, str]:
-    """Rewrite the `macro` attribute on the element that holds this cNvPr name."""
-    for anchor_start, anchor_end in _elements(
-        xml, {"xdr:twoCellAnchor", "xdr:oneCellAnchor", "xdr:absoluteAnchor",
-              "mc:AlternateContent"}
-    ):
-        body = xml[anchor_start:anchor_end]
-        for _, start, end in _drawing_children(body, 0):
-            element = body[start:end]
-            properties = _first_tag(element, "xdr:cNvPr")
-            if properties is None or properties.get("name", "") != shape_name:
-                continue
-            opening = next_tag(element, 0)
-            if opening is None:
-                continue
-            tag = element[opening.start : opening.end]
-            before = opening.attrs.get("macro", "")
-            rebuilt = _with_attribute(tag, "macro", _stored_macro(macro, before))
-            updated_element = rebuilt + element[opening.end :]
-            updated_body = body[:start] + updated_element + body[end:]
-            return xml[:anchor_start] + updated_body + xml[anchor_end:], True, before
-    return xml, False, ""
 
 
 def _control_shape_ids(sheet_xml: str, shape_name: str) -> set[int]:
@@ -690,11 +1093,17 @@ def _set_client_data(inner: str, name: str, value: str) -> str:
     )
 
 
-def _int(value: str | None) -> int:
-    try:
-        return int(value or 0)
-    except ValueError:
-        return 0
-
-
-__all__ = ["Shape", "ToolError", "XlsxError", "read_sheet_shapes", "set_shape_macro"]
+__all__ = [
+    "ADDABLE_KINDS",
+    "CHART_TYPES",
+    "Shape",
+    "ToolError",
+    "XlsxError",
+    "add_chart",
+    "add_shape",
+    "chart_summary",
+    "control_states",
+    "read_sheet_shapes",
+    "remove_shape",
+    "set_shape_macro",
+]

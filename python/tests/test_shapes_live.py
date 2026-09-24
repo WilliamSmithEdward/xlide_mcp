@@ -154,3 +154,51 @@ def test_excel_accepts_a_workbook_whose_shape_macro_this_server_changed(
     assert button.endswith("Module1.Renamed"), button
     assert drawing == "Module1.Renamed"
     assert count == "3", "every shape survived the edit"
+
+
+READ_ADDED = """
+Public Function ReadAdded() As String
+    Dim ws As Worksheet
+    Set ws = ActiveWorkbook.Worksheets("Controls")
+    ReadAdded = ws.Buttons("Refresh").OnAction & "|" & _
+                ws.Buttons("Refresh").Caption & "|" & _
+                ws.CheckBoxes("Include").LinkedCell & "|" & _
+                ws.Shapes("Include").TopLeftCell.Address(False, False) & "|" & _
+                CStr(ws.Shapes.Count)
+End Function
+"""
+
+
+def test_excel_opens_a_workbook_this_server_added_and_removed_controls_in(
+    tmp_path: Path,
+) -> None:
+    """The gate for adding and removing. A control is four parts, and a
+    disagreement among them is a workbook Excel repairs on open, which a
+    reader of the package alone cannot see."""
+    from xlide_mcp.shapes import add_shape, remove_shape
+
+    workbook = tmp_path / "Shapes.xlsm"
+    shutil.copy2(FIXTURE, workbook)
+    add_shape(
+        workbook, "Controls", name="Refresh", kind="button", cell="E8",
+        text="Refresh data", macro="Module1.DoTheThing",
+    )
+    add_shape(
+        workbook, "Controls", name="Include", kind="checkBox", cell="B10",
+        text="Include totals", linked_cell="$D$10",
+    )
+    remove_shape(workbook, "Controls", "GoShape")
+
+    from pyvbaharness import ExcelSession
+
+    with ExcelSession() as excel:
+        excel.open_document(str(workbook), read_only=True)
+        result = excel.run_vba(READ_ADDED, proc="ReadAdded", timeout=240)
+
+    assert result.outcome == "passed", result.error
+    macro, caption, linked, corner, count = str(result.value).split("|")
+    assert macro.endswith("Module1.DoTheThing"), macro
+    assert caption == "Refresh data"
+    assert linked == "$D$10"
+    assert corner == "B10", "placed on the cell it was given"
+    assert count == "4", "RunButton, Ready and the two added; GoShape gone"

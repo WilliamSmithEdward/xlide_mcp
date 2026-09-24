@@ -128,11 +128,11 @@ and the document it lives in.
 | | |
 |---|---|
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` (set, rename, remove, load, unload) |
-| Sheets and cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_format_cells` |
+| Sheets and cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_evaluate_formula`, `xlide_format_cells` |
 | Structure | `xlide_manage_sheet`, `xlide_manage_rows_columns` |
-| Tables and names | `xlide_manage_table`, `xlide_manage_name` |
-| Rules and links | `xlide_manage_validation`, `xlide_manage_conditional_format`, `xlide_manage_hyperlink`, `xlide_page_setup` |
-| Shapes | `xlide_list_shapes`, `xlide_set_shape_macro` |
+| Tables and names | `xlide_manage_table`, `xlide_manage_name`, `xlide_manage_filter` |
+| Rules, links and notes | `xlide_manage_validation`, `xlide_manage_conditional_format`, `xlide_manage_hyperlink`, `xlide_manage_comment`, `xlide_page_setup` |
+| Shapes and charts | `xlide_list_shapes`, `xlide_manage_shape`, `xlide_set_shape_macro`, `xlide_add_chart` |
 
 **Execution** - Windows with the desktop application.
 
@@ -249,7 +249,8 @@ them whether or not the user configured anything.
   cells that hold data, writing to a project that is signed or password-protected.
   The last two are refused until the call carries the flag that allows them.
 - A cell value is what Excel last calculated. A formula written here has no result
-  until Excel next opens the workbook, and the result says so.
+  in the file until Excel next opens it. `calculate=true` works results out with
+  pyOfficeEditor's formula engine, which names any cell it could not.
 
 ## Built on
 

@@ -46,6 +46,18 @@ class SheetInfo:
     name: str
     used_range: str
     hidden: bool
+    pivot_tables: tuple[dict[str, str], ...] = ()
+    """Each pivot table's name, the block it fills, and what its cache was read from."""
+
+    def summary(self) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "name": self.name,
+            "used_range": self.used_range or "(empty)",
+            "hidden": self.hidden,
+        }
+        if self.pivot_tables:
+            entry["pivot_tables"] = list(self.pivot_tables)
+        return entry
 
 
 @dataclass(frozen=True)
@@ -62,6 +74,14 @@ class ReadResult:
     columns: int
     values: list[list[Any]]
     formulas: list[list[str | None]]
+    texts: list[list[str]] | None = None
+    """What each cell shows under its number format, when asked for."""
+    rich: list[list[list[dict[str, Any]] | None]] | None = None
+    """Each cell's font runs, or None where its text is in one font, when asked for."""
+    calculated: bool = False
+    """Whether the values were worked out here rather than read as Excel left them."""
+    kept_cached: dict[str, str] | None = None
+    """Formula cells in the range the engine could not work out, and why."""
 
     @property
     def formula_count(self) -> int:
@@ -137,6 +157,26 @@ def sheets(path: Path) -> list[SheetInfo]:
         return [_sheet_info(sheet) for sheet in book.sheets]
 
 
+def chart_sheets(path: Path) -> list[dict[str, Any]]:
+    """The tabs that hold a chart rather than cells, with what each chart shows.
+
+    They are sheets to the user and to VBA's Sheets collection, and nothing the
+    cell tools can read, so they are listed apart rather than left out.
+    """
+    from .shapes import chart_summary
+
+    with open_workbook(path) as book:
+        found: list[dict[str, Any]] = []
+        for tab in book.chart_sheets:
+            entry: dict[str, Any] = {"name": tab.name}
+            try:
+                entry.update(chart_summary(tab.chart))
+            except Exception:
+                entry["note"] = "Its chart could not be read."
+            found.append(entry)
+        return found
+
+
 def named_ranges(path: Path) -> list[NamedRange]:
     with open_workbook(path) as book:
         return [
@@ -145,7 +185,22 @@ def named_ranges(path: Path) -> list[NamedRange]:
         ]
 
 
-def read(path: Path, sheet_name: str, reference: str) -> ReadResult:
+def read(
+    path: Path,
+    sheet_name: str,
+    reference: str,
+    *,
+    calculate: bool = False,
+    text: bool = False,
+    rich: bool = False,
+) -> ReadResult:
+    """A block of cells. `calculate` works every formula out first, in memory.
+
+    The calculation is pyOfficeEditor's formula engine, held to what Excel cached
+    for 10,958 formulas across 493 of its functions; nothing is saved, so the file
+    keeps what Excel last calculated. A cell the engine cannot work out keeps its
+    cached value, and is named with the reason rather than passed off as fresh.
+    """
     with open_workbook(path) as book:
         sheet = sheet_named(book, sheet_name)
         area = _range(sheet, reference)
@@ -160,6 +215,9 @@ def read(path: Path, sheet_name: str, reference: str) -> ReadResult:
                 f"{span} is {height * width:,} cells, over the {MAX_CELLS_PER_READ:,} "
                 "a single read returns. Read it in blocks."
             )
+        kept: dict[str, str] | None = None
+        if calculate:
+            kept = _calculate(book, sheet.name, span)
         rows = list(area.rows())
         return ReadResult(
             sheet=sheet.name,
@@ -168,7 +226,83 @@ def read(path: Path, sheet_name: str, reference: str) -> ReadResult:
             columns=width,
             values=[[_value(cell.value) for cell in row] for row in rows],
             formulas=[[_formula(cell.formula) for cell in row] for row in rows],
+            texts=[[_text(cell) for cell in row] for row in rows] if text else None,
+            rich=[[_runs(sheet, cell) for cell in row] for row in rows] if rich else None,
+            calculated=calculate,
+            kept_cached=kept,
         )
+
+
+def evaluate(path: Path, sheet_name: str, formula: str, at: str) -> Any:
+    """What a formula would give in a cell, without putting it there."""
+    from pyofficeeditor.exceptions import PyOfficeEditorError, UnsupportedFormulaError
+
+    body = (formula or "").strip()
+    if body.startswith("="):
+        body = body[1:]
+    if not body:
+        raise CellsError("formula is empty.")
+    with open_workbook(path) as book:
+        sheet = sheet_named(book, sheet_name)
+        try:
+            value = sheet.evaluate(body, at=(at or "A1").strip())
+        except UnsupportedFormulaError as exc:
+            raise CellsError(
+                f"The formula engine cannot work this out: {exc}. Excel can; write it with "
+                "xlide_write_cells and Excel calculates it when it next opens the workbook."
+            ) from exc
+        except (PyOfficeEditorError, ValueError) as exc:
+            raise CellsError(f"{formula!r} is not a formula the engine can read: {exc}") from exc
+    return _json_value(value)
+
+
+def _calculate(book: Any, sheet_name: str, span: Any) -> dict[str, str]:
+    """Work the workbook out in memory; the cells in the span that kept their cached value."""
+    outcome = book.calculate()
+    reasons: dict[str, str] = dict(outcome.unsupported)
+    for address in outcome.dependent:
+        reasons.setdefault(address, "reads a cell the engine could not work out")
+    for address in outcome.circular:
+        reasons.setdefault(address, "is part of a circular reference")
+    prefix = f"{sheet_name}!"
+    inside: dict[str, str] = {}
+    for address, reason in reasons.items():
+        if not address.startswith(prefix):
+            continue
+        cell = address[len(prefix):]
+        if _within(cell, span):
+            inside[cell] = reason
+    return inside
+
+
+def _within(cell: str, span: Any) -> bool:
+    from pyofficeeditor.excel import CellRef
+
+    try:
+        ref = CellRef.parse(cell)
+    except Exception:
+        return False
+    return (
+        span.start.row <= ref.row <= span.end.row
+        and span.start.column <= ref.column <= span.end.column
+    )
+
+
+def _text(cell: Any) -> str:
+    try:
+        return str(cell.text)
+    except Exception:
+        return ""
+
+
+def _json_value(value: Any) -> Any:
+    """An engine answer as JSON: a value, or rows of values for an array."""
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
+    rows = getattr(value, "rows", None)
+    if callable(rows):
+        return [[_value(item) for item in row] for row in rows()]
+    return _value(value)
 
 
 def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -> WriteResult:
@@ -201,7 +335,7 @@ def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -
         for row_offset, row_values in enumerate(data):
             for column_offset, raw in enumerate(row_values):
                 cell = sheet.cell(first.row + row_offset, first.column + column_offset)
-                _put(cell, raw)
+                _put(sheet, cell, raw)
                 written += 1
         save(book, path)
 
@@ -261,7 +395,26 @@ def _sheet_info(sheet: Any) -> SheetInfo:
         name=sheet.name,
         used_range=str(used) if used is not None else "",
         hidden=_hidden(sheet),
+        pivot_tables=tuple(_pivot(table) for table in _pivots(sheet)),
     )
+
+
+def _pivots(sheet: Any) -> list[Any]:
+    try:
+        return list(sheet.pivot_tables)
+    except Exception:
+        return []
+
+
+def _pivot(table: Any) -> dict[str, str]:
+    """Where a pivot table sits and what it summarizes."""
+    entry = {"name": str(table.name), "range": str(table.location)}
+    if table.source_name:
+        entry["source"] = str(table.source_name)
+    elif table.source_range:
+        source = f"{table.source_sheet}!{table.source_range}" if table.source_sheet else ""
+        entry["source"] = source or str(table.source_range)
+    return entry
 
 
 def _range(sheet: Any, reference: str) -> Any:
@@ -273,6 +426,11 @@ def _range(sheet: Any, reference: str) -> Any:
         raise CellsError(f"{reference!r} is not a range this sheet can read: {exc}") from exc
     except ValueError as exc:
         raise CellsError(f"{reference!r} is not an A1-style range: {exc}") from exc
+
+
+def cell_reference(sheet: Any, reference: str) -> Any:
+    """A cell's reference, with 1-based `row` and `column`, or a refusal."""
+    return _cell_ref(sheet, reference)
 
 
 def _cell_ref(sheet: Any, reference: str) -> Any:
@@ -331,8 +489,11 @@ def _formula(raw: str | None) -> str | None:
     return raw if raw.startswith("=") else "=" + raw
 
 
-def _put(cell: Any, raw: Any) -> None:
+def _put(sheet: Any, cell: Any, raw: Any) -> None:
     """One cell, written the way typing into it would write it."""
+    if isinstance(raw, dict):
+        _put_rich(sheet, cell, raw)
+        return
     if isinstance(raw, str) and raw.startswith("="):
         cell.formula = raw[1:]
         return
@@ -341,3 +502,105 @@ def _put(cell: Any, raw: Any) -> None:
     if cell.formula is not None:
         cell.formula = None
     cell.value = raw
+
+
+# The parts of a run's font a caller may set, and pyOfficeEditor's names for them.
+_RUN_FIELDS = ("bold", "italic", "strike", "underline", "size", "font", "color", "script")
+
+
+def _put_rich(sheet: Any, cell: Any, raw: dict[str, Any]) -> None:
+    """Text in more than one font: {"rich_text": [{"text": "Total ", "bold": true}, ...]}."""
+    import pyofficeeditor.excel as excel
+
+    runs_in = raw.get("rich_text")
+    if not isinstance(runs_in, list) or not runs_in:
+        raise CellsError(
+            'A cell given as an object must be {"rich_text": [{"text": ..., "bold": true}, ...]}.'
+        )
+    runs: list[Any] = []
+    for index, run in enumerate(runs_in):
+        if isinstance(run, str):
+            runs.append(excel.TextRun(run))
+            continue
+        if not isinstance(run, dict) or not isinstance(run.get("text"), str):
+            raise CellsError(f"Run {index + 1} of {cell.reference} needs a text.")
+        unknown = set(run) - {"text", *_RUN_FIELDS}
+        if unknown:
+            raise CellsError(
+                f"Run {index + 1} has {', '.join(sorted(unknown))}; a run takes text and "
+                f"{', '.join(_RUN_FIELDS)}."
+            )
+        runs.append(excel.TextRun(run["text"], _run_font(run)))
+    if cell.formula is not None:
+        cell.formula = None
+    try:
+        sheet.set_rich_text(cell.reference, runs)
+    except ValueError as exc:
+        raise CellsError(f"{cell.reference} could not take that text: {exc}") from exc
+
+
+def _run_font(run: dict[str, Any]) -> Any:
+    import pyofficeeditor.excel as excel
+
+    if not any(key in run for key in _RUN_FIELDS):
+        return None
+    underline = run.get("underline")
+    if isinstance(underline, bool):
+        underline = "single" if underline else None
+    script = run.get("script") or None
+    if script not in {None, "superscript", "subscript"}:
+        raise CellsError("script must be 'superscript' or 'subscript'.")
+    size = None
+    if run.get("size"):
+        try:
+            size = float(run["size"])
+        except (TypeError, ValueError):
+            size = 0.0
+        if not size > 0:
+            raise CellsError(f"size is in points, such as 11 or 10.5, not {run['size']!r}.")
+    try:
+        color = excel.Color.from_rgb(str(run["color"])) if run.get("color") else None
+        return excel.Font(
+            name=run.get("font") or None,
+            size=size,
+            bold=bool(run.get("bold", False)),
+            italic=bool(run.get("italic", False)),
+            strike=bool(run.get("strike", False)),
+            underline=underline,
+            script=script,
+            color=color,
+        )
+    except ValueError as exc:
+        raise CellsError(str(exc)) from exc
+
+
+def _runs(sheet: Any, cell: Any) -> list[dict[str, Any]] | None:
+    """A cell's text in more than one font, as runs, or None for plain text."""
+    try:
+        found = sheet.get_rich_text(cell.reference)
+    except Exception:
+        return None
+    # A plain cell answers with one run in its own font, which is not text in
+    # several fonts and would bury the cells that are.
+    if not found or len(found) < 2:
+        return None
+    out: list[dict[str, Any]] = []
+    for run in found:
+        entry: dict[str, Any] = {"text": run.text}
+        font = run.font
+        if font is not None:
+            for key in ("bold", "italic", "strike"):
+                if getattr(font, key, False):
+                    entry[key] = True
+            if font.underline and font.underline != "none":
+                entry["underline"] = font.underline
+            if font.size:
+                entry["size"] = font.size
+            if font.name:
+                entry["font"] = font.name
+            if font.color is not None and font.color.rgb:
+                entry["color"] = font.color.rgb
+            if font.script:
+                entry["script"] = font.script
+        out.append(entry)
+    return out

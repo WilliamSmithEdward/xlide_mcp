@@ -388,14 +388,14 @@ def _sheet_summary(path: Path) -> dict[str, Any]:
     from .. import cells
 
     try:
-        sheets = [
-            {"name": s.name, "used_range": s.used_range or "(empty)", "hidden": s.hidden}
-            for s in cells.sheets(path)
-        ]
+        sheets = [s.summary() for s in cells.sheets(path)]
         named = [{"name": n.name, "refers_to": n.refers_to} for n in cells.named_ranges(path)]
+        charts = cells.chart_sheets(path)
     except cells.CellsError as exc:
         return {"sheets_note": str(exc)}
     out: dict[str, Any] = {"sheets": sheets}
+    if charts:
+        out["chart_sheets"] = charts
     if named:
         out["named_ranges"] = named
     return out

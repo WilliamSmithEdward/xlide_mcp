@@ -335,6 +335,17 @@ FIXTURES: dict[str, Any] = {
     },
 }
 
+# A sheet to filter, calculate and chart. The cases write it with
+# xlide_write_cells, so a port builds nothing new for them.
+SALES = [
+    ["Region", "Amount"],
+    ["West", 120],
+    ["East", 80],
+    ["West", 45],
+    ["North", 300],
+    ["East", 10],
+]
+
 WORD_CODE = CRLF.join(
     [
         "Option Explicit",
@@ -1992,9 +2003,10 @@ def cases() -> list[dict[str, Any]]:
 
 
 def _cases_since_1_1() -> list[dict[str, Any]]:
-    """What 1.1 added: files with no project, signatures, and references. Kept
-    together so a port can see the new work."""
+    """What 1.1 added: files with no project, signatures, references, and the rest of
+    what pyOfficeEditor 0.3 reaches. Kept together so a port can see the new work."""
     out: list[dict[str, Any]] = []
+    sheet = {"file_path": "${fixture}", "sheet": "Sheet1"}
 
     # ------------------------------------------------ a file with no project
     out.append(
@@ -2179,6 +2191,228 @@ def _cases_since_1_1() -> list[dict[str, Any]]:
         )
     )
 
+    # ---------------------------------------------------------- adding shapes
+    out.append(
+        case(
+            "shapes.a-button-is-added-with-the-macro-it-runs",
+            "The usual reason to add a shape: a button that runs the Sub just written, so "
+            "the user has a way to start it.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_manage_shape",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Controls",
+                        "action": "add",
+                        "shape_name": "Refresh",
+                        "kind": "button",
+                        "cell": "E8",
+                        "text": "Refresh",
+                        "macro": "Module1.DoTheThing",
+                    },
+                ),
+                step("xlide_list_shapes", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "shape_count", "equals": 4},
+                {"path": "macros_run_by_shapes", "contains": "Refresh"},
+                {"path": "sheets[0].shapes", "contains": '"cells": "E8'},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "shapes.a-removed-control-is-gone-whole",
+            "A Forms control is four parts. Removing one and leaving the rest is a "
+            "relationship to nothing, which Excel meets by repairing the workbook.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_manage_shape",
+                    {
+                        "file_path": "${fixture}",
+                        "sheet": "Controls",
+                        "action": "remove",
+                        "shape_name": "RunButton",
+                    },
+                ),
+                step("xlide_list_shapes", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "shape_count", "equals": 2},
+                {"path": "sheets[0].shapes", "not_contains": "RunButton"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "shapes.a-check-box-reports-its-state",
+            "A check box's value is spelled three ways in the file and none is a plain val; "
+            "an unticked box has to read as unticked.",
+            "shapes_workbook",
+            [step("xlide_list_shapes", {"file_path": "${fixture}"})],
+            [{"path": "sheets[0].shapes", "contains": '"checked": false'}],
+        )
+    )
+
+    # ------------------------------------------------------------ calculation
+    out.append(
+        case(
+            "cells.calculate-works-a-written-formula-out",
+            "A formula written to the file has no result there until Excel opens it. "
+            "calculate works it out in memory, and says what did.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {**sheet, "start_cell": "A1", "data": [[2], [3], ["=SUM(A1:A2)"]]},
+                ),
+                step("xlide_read_cells", {**sheet, "cell_range": "A3", "calculate": True}),
+            ],
+            [
+                {"path": "values", "equals": [[5]]},
+                {"path": "recalculated", "equals": True},
+                {"path": "calculated_by", "contains": "formula engine"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "cells.what-the-engine-cannot-work-out-is-named",
+            "A cell whose function the engine lacks keeps Excel's cached value. Passing that "
+            "off as fresh is what the answer is shaped to prevent.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {**sheet, "start_cell": "A1", "data": [['=WEBSERVICE("http://example.com")']]},
+                ),
+                step("xlide_read_cells", {**sheet, "cell_range": "A1", "calculate": True}),
+            ],
+            [
+                {"path": "recalculated", "equals": False},
+                {"path": "kept_cached.A1", "contains": "WEBSERVICE"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "cells.a-formula-can-be-tried-before-it-is-written",
+            "Checking a formula costs a call and changes nothing.",
+            "plain_workbook",
+            [
+                step("xlide_write_cells", {**sheet, "start_cell": "A1", "data": [[2], [3]]}),
+                step("xlide_evaluate_formula", {**sheet, "formula": "=SUM(A1:A2)*10"}),
+            ],
+            [{"path": "value", "equals": 50}],
+        )
+    )
+    out.append(
+        case(
+            "cells.text-in-several-fonts-round-trips",
+            "A cell can hold text in more than one font, and what a write sends as runs "
+            "reads back as the same runs.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        **sheet,
+                        "start_cell": "A1",
+                        "data": [
+                            [{"rich_text": [{"text": "Total ", "bold": True}, {"text": "42"}]}]
+                        ],
+                    },
+                ),
+                step("xlide_read_cells", {**sheet, "cell_range": "A1", "include": "rich_text"}),
+            ],
+            [
+                {"path": "rich_text", "contains": '"bold": true'},
+                {"path": "rich_text", "contains": "Total "},
+            ],
+        )
+    )
+
+    # ---------------------------------------------------------------- filters
+    out.append(
+        case(
+            "filters.set-hides-the-rows-it-filters-out",
+            "Excel does not apply a filter when it opens a workbook; it shows the rows as the "
+            "file marks them. Criteria written without the rows hidden open with every row "
+            "showing.",
+            "plain_workbook",
+            [
+                step("xlide_write_cells", {**sheet, "start_cell": "A1", "data": SALES}),
+                step(
+                    "xlide_manage_filter",
+                    {
+                        **sheet,
+                        "action": "set",
+                        "cell_range": "A1:B6",
+                        "column": "Region",
+                        "criteria1": "=West",
+                    },
+                ),
+            ],
+            [
+                {"path": "rows.hidden", "equals": 3},
+                {"path": "rows.shown", "equals": 2},
+            ],
+        )
+    )
+
+    # --------------------------------------------------------------- comments
+    out.append(
+        case(
+            "comments.a-note-is-written-and-read",
+            "A note is how the next reader of a workbook learns why a cell is what it is.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_manage_comment",
+                    {**sheet, "action": "set", "cell": "B2", "text": "Checked", "author": "A"},
+                ),
+                step("xlide_manage_comment", {**sheet}),
+            ],
+            [
+                {"path": "count", "equals": 1},
+                {"path": "comments", "contains": '"kind": "note"'},
+                {"path": "comments", "contains": "Checked"},
+            ],
+        )
+    )
+
+    # ----------------------------------------------------------------- charts
+    out.append(
+        case(
+            "charts.a-chart-is-added-with-its-series",
+            "A chart is read back the way Excel's formula bar shows a series, so an agent "
+            "can check it charts what it was meant to.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {**sheet, "start_cell": "A1", "data": [["Month", "Sales"], ["Jan", 10],
+                                                           ["Feb", 14]]},
+                ),
+                step(
+                    "xlide_add_chart",
+                    {
+                        **sheet,
+                        "data_range": "A1:B3",
+                        "chart_type": "column",
+                        "cell": "D2",
+                        "chart_name": "Trend",
+                    },
+                ),
+            ],
+            [
+                {"path": "chart.name", "equals": "Trend"},
+                {"path": "chart.series", "contains": "=SERIES("},
+            ],
+        )
+    )
     return out
 
 

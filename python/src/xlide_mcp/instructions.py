@@ -3,8 +3,9 @@
 MCP hands `instructions` to the client at initialize, so this is the one piece of
 text every agent sees whether or not the user pasted anything into a config file.
 It is short on purpose. The rules here are the ones that stop real damage: the file
-is the source of truth, exports are copies, analysis is a build gate, and the
-guarded operations are the user's decision rather than the agent's.
+is the source of truth, exports are copies, analysis is a build gate, the guarded
+operations are the user's decision rather than the agent's, and a calculated value
+is only reported as current when something actually calculated it.
 
 Each tool carries its own description for the detail; this says how they fit
 together and what not to do.
@@ -14,9 +15,9 @@ from __future__ import annotations
 
 SERVER_INSTRUCTIONS = """\
 Read and change the VBA, UserForms, Power Query and worksheet cells inside Office \
-files: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint \
-(.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain \
-.xlsx, and Visual Basic 6 projects (.vbp).
+files, and the document around them: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, \
+.dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query \
+and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).
 
 A .vbp's modules are files on disk, so its writes land as they are made and it is \
 never protected or signed. Everything else works the same way.
@@ -68,8 +69,9 @@ the listings answer empty, and xlide_write_module gives the file its project.
 - Access runs its compiled project, so a module written here takes effect when Access \
 next opens the database.
 - Cell values read from the file are what Excel last calculated. A formula you write, \
-and anything depending on a cell you write, keeps its old result until Excel next opens \
-the workbook. Do not report a result Excel has not calculated.
+and anything depending on a cell you write, has no current result in the file until \
+Excel next opens it. xlide_read_cells with calculate=true works results out with a \
+formula engine and names any cell it could not; report those as Excel's cached values.
 - When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the \
 user can see the change and keep or revert it in XLIDE's project tree. Say so.
 - Report what you changed, how you verified it, and what the user still has to do.

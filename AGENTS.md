@@ -39,7 +39,7 @@ A port reimplements the *server*. It does not reimplement that knowledge, and it
 is never the place a format discovery lands: that belongs upstream, and reaches
 here through a version bump.
 
-### One debt against that rule, half paid
+### One debt against that rule, mostly paid
 
 `shapes.py` and `xlsx.py` held format knowledge this server should not own: the
 worksheet grid, and the drawing layer where a button keeps the macro it runs.
@@ -52,17 +52,26 @@ passed before and after, unchanged. What the adapter owns is translation, not
 format knowledge - an integer where the file stores a double, a leading `=` on a
 formula, a JSON-safe date - because those are answers the corpus pins.
 
-**Shapes are not.** `shapes.py` still reads the drawing layer itself, and still
-reaches into `xlsx.py` for the package surface underneath it: `part_text`,
-`set_part_text`, `part_relationships`, `sheets`. That is the only reason
-`xlsx.py` still exists. When `shapes.py` becomes a pyOpenVBA adapter, both go in
-one deletion rather than two risky trims.
+**Writing shapes is done, but for one write.** pyOfficeEditor 0.3 adds, removes
+and repoints shapes, and keeps a Forms control's four parts in agreement while it
+does, so shape writes go through it. The same proof held: every shape
+conformance case passed before and after the swap. The one left here is the
+macro on a Forms control Excel 2007 saved, which lives only in VML, where
+pyOfficeEditor does not look; it goes with the reader.
 
-Until then, nothing new goes into either. Adding or deleting a shape means
-creating a drawing part, a content-type override and a relationship, and for a
-Forms control four parts that have to agree - exactly the knowledge that belongs
-upstream. `xlide_set_shape_macro` covers what an agent is usually after: pointing
-a clickable thing at a Sub it just wrote.
+**Reading shapes is not, yet.** pyOfficeEditor's shapes do not carry four
+things `xlide_list_shapes` has always answered and the corpus pins: the cells an
+anchor covers, alt text, the hidden flag, and ActiveX controls. So the reader in
+`shapes.py` stays, with `xlsx.py` under it for `part_text`, `part_relationships`
+and `sheets`, and what pyOfficeEditor does read - a control's state, every
+shape's position in points, a chart's series - is merged in by name. Placing a
+new shape at a cell also borrows pyOfficeEditor's private grid, the one it turns
+a position back into an anchor with, because nothing public turns a cell into
+points. Both gaps are
+[pyOfficeEditor#4](https://github.com/WilliamSmithEdward/pyOfficeEditor/issues/4);
+when it closes, the reader and `xlsx.py` go in one deletion.
+
+Until then, nothing new goes into either.
 
 ## Layout
 
@@ -86,10 +95,10 @@ hosts.py          extension -> host, and what can be done with each
 project.py        the VBA project: modules, kinds, guarded saves
 tokens.py         content tokens, the guard on a stale write
 textual.py        the file as text: what a diff of it reads
-cells.py          worksheet cells, through pyOfficeEditor
-xlsx.py           the OOXML package surface the drawing layer still needs
+cells.py          worksheet cells, through pyOfficeEditor, and its formula engine
+xlsx.py           the OOXML package surface the shape reader still needs
 grid.py           the same, through Excel, for the formats that are not OOXML
-shapes.py         the drawing layer: buttons, shapes, and the macros they run
+shapes.py         the drawing layer: buttons, shapes, charts, and the macros they run
 vb6.py            a .vbp read as a project, through the same surface
 typelibs.py       the type libraries registered on this machine, for references
 locks.py          which process holds a locked file, and what frees it
@@ -103,10 +112,10 @@ tools/
   catalog.py      project references, and an Access database's tables
   forms.py        UserForm and Access designs
   powerquery.py   the M code beside the VBA
-  sheets.py       cells, formulas, and the shapes on a sheet
-  formatting.py   how a range looks: fonts, fills, borders, merging
+  sheets.py       cells, formulas, and the shapes and charts on a sheet
+  formatting.py   how a range looks: styles, fonts, fills, borders, merging
   structure.py    sheets, and the rows and columns in them
-  features.py     tables, names, validation, rules, links, page setup
+  features.py     tables, names, validation, rules, links, comments, filters, page setup
   sync.py         export and import .bas/.cls, previewed
   vcs.py          what changed inside the file since a git revision
   execution.py    macros, tests and compile checks in real Office
@@ -165,12 +174,14 @@ Rules the surface holds to, each of which has a conformance case behind it:
   cells that hold data, writing to a signed or password-protected project. Each
   of the last two is a refusal until the flag that allows it is passed: a
   warning after the write is not asking first.
-- **No result is claimed that was not observed.** Nothing in the files layer
-  calculates anything, so a cell write answers `recalculated: false`. An
-  implementation that reported a computed value it did not compute would be
-  lying to the user through the agent.
+- **No result is claimed that was not observed.** A cell write answers
+  `recalculated: false`, because the file holds no result until Excel opens it.
+  A read with `calculate` says who calculated (`calculated_by`) and names every
+  cell the engine could not work out, with the reason, rather than passing its
+  cached value off as fresh. An implementation that reported a computed value it
+  did not compute would be lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 24 of the 88 conformance cases
+A refusal is as much of the contract as a success: 24 of the 98 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

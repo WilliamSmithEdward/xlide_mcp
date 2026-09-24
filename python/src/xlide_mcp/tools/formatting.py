@@ -125,6 +125,17 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = "",
+        style: Annotated[
+            str,
+            Field(
+                default="",
+                description=(
+                    "A named cell style, applied first: one of Excel's own, such as Good, Bad, "
+                    "Neutral, Title, Heading 1, Total, Input, Output, Note or 20% - Accent1, or "
+                    "one the workbook defines. It sets only the parts the style includes."
+                ),
+            ),
+        ] = "",
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_format_cells")
         path = excel_with_sheets(file_path, settings)
@@ -134,11 +145,13 @@ def register(server: MCPServer, settings: Settings) -> None:
         wanted_merge = (merge or "").strip().lower()
         if wanted_merge not in {"", "merge", "unmerge"}:
             raise ToolError("merge must be 'merge', 'unmerge' or empty.")
-        if not any([font, alignment, fill_color, border_style, number_format, wanted_merge]):
+        if not any(
+            [font, alignment, fill_color, border_style, number_format, wanted_merge, style.strip()]
+        ):
             raise ToolError(
-                "Nothing to change. Pass at least one of bold, italic, underline, strike, "
-                "font_name, font_size, font_color, fill_color, border_style, horizontal, "
-                "vertical, wrap_text, number_format or merge."
+                "Nothing to change. Pass at least one of style, bold, italic, underline, "
+                "strike, font_name, font_size, font_color, fill_color, border_style, "
+                "horizontal, vertical, wrap_text, number_format or merge."
             )
 
         applied: list[str] = []
@@ -146,6 +159,11 @@ def register(server: MCPServer, settings: Settings) -> None:
             sheet_object = cells.sheet_named(book, sheet)
             area = _area(sheet_object, cell_range)
 
+            # First, so what else this call sets lands on top of the style, as it
+            # would if the user picked the style and then made the text bold.
+            if style.strip():
+                _apply_style(area, style.strip())
+                applied.append(f"style {style.strip()}")
             if font:
                 area.apply_font(**font)
                 applied.append("font")
@@ -251,6 +269,20 @@ def _apply_border(area: Any, style: str, color: str) -> None:
         area.apply_border(Border())
         return
     area.apply_border(Border.all_sides(wanted, _color(color, "border_color") if color else None))
+
+
+def _apply_style(area: Any, name: str) -> None:
+    """A named style, Excel's own defined in the workbook the first time it is used."""
+    from pyofficeeditor.exceptions import PyOfficeEditorError
+
+    try:
+        area.apply_style(name)
+    except (PyOfficeEditorError, KeyError, ValueError) as exc:
+        raise ToolError(
+            f"{name!r} is not a cell style this workbook has or Excel defines: {exc}. Excel's "
+            "own are named as its Cell Styles gallery shows them, such as Good, Heading 1 or "
+            "40% - Accent2."
+        ) from exc
 
 
 def _apply_merge(sheet: Any, area: Any, action: str) -> None:

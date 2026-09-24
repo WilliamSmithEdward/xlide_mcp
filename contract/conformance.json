@@ -208,7 +208,7 @@
       }
     }
   },
-  "case_count": 88,
+  "case_count": 98,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -2563,6 +2563,436 @@
         {
           "path": "references",
           "contains": "{0D452EE1-E08F-101A-852E-02608C4D0BB4}"
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-button-is-added-with-the-macro-it-runs",
+      "why": "The usual reason to add a shape: a button that runs the Sub just written, so the user has a way to start it.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_shape",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "action": "add",
+            "shape_name": "Refresh",
+            "kind": "button",
+            "cell": "E8",
+            "text": "Refresh",
+            "macro": "Module1.DoTheThing"
+          }
+        },
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shape_count",
+          "equals": 4
+        },
+        {
+          "path": "macros_run_by_shapes",
+          "contains": "Refresh"
+        },
+        {
+          "path": "sheets[0].shapes",
+          "contains": "\"cells\": \"E8"
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-removed-control-is-gone-whole",
+      "why": "A Forms control is four parts. Removing one and leaving the rest is a relationship to nothing, which Excel meets by repairing the workbook.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_shape",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "action": "remove",
+            "shape_name": "RunButton"
+          }
+        },
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shape_count",
+          "equals": 2
+        },
+        {
+          "path": "sheets[0].shapes",
+          "not_contains": "RunButton"
+        }
+      ]
+    },
+    {
+      "id": "shapes.a-check-box-reports-its-state",
+      "why": "A check box's value is spelled three ways in the file and none is a plain val; an unticked box has to read as unticked.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "sheets[0].shapes",
+          "contains": "\"checked\": false"
+        }
+      ]
+    },
+    {
+      "id": "cells.calculate-works-a-written-formula-out",
+      "why": "A formula written to the file has no result there until Excel opens it. calculate works it out in memory, and says what did.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                2
+              ],
+              [
+                3
+              ],
+              [
+                "=SUM(A1:A2)"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_read_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A3",
+            "calculate": true
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "values",
+          "equals": [
+            [
+              5
+            ]
+          ]
+        },
+        {
+          "path": "recalculated",
+          "equals": true
+        },
+        {
+          "path": "calculated_by",
+          "contains": "formula engine"
+        }
+      ]
+    },
+    {
+      "id": "cells.what-the-engine-cannot-work-out-is-named",
+      "why": "A cell whose function the engine lacks keeps Excel's cached value. Passing that off as fresh is what the answer is shaped to prevent.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "=WEBSERVICE(\"http://example.com\")"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_read_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1",
+            "calculate": true
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "recalculated",
+          "equals": false
+        },
+        {
+          "path": "kept_cached.A1",
+          "contains": "WEBSERVICE"
+        }
+      ]
+    },
+    {
+      "id": "cells.a-formula-can-be-tried-before-it-is-written",
+      "why": "Checking a formula costs a call and changes nothing.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                2
+              ],
+              [
+                3
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_evaluate_formula",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "formula": "=SUM(A1:A2)*10"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "value",
+          "equals": 50
+        }
+      ]
+    },
+    {
+      "id": "cells.text-in-several-fonts-round-trips",
+      "why": "A cell can hold text in more than one font, and what a write sends as runs reads back as the same runs.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                {
+                  "rich_text": [
+                    {
+                      "text": "Total ",
+                      "bold": true
+                    },
+                    {
+                      "text": "42"
+                    }
+                  ]
+                }
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_read_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1",
+            "include": "rich_text"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "rich_text",
+          "contains": "\"bold\": true"
+        },
+        {
+          "path": "rich_text",
+          "contains": "Total "
+        }
+      ]
+    },
+    {
+      "id": "filters.set-hides-the-rows-it-filters-out",
+      "why": "Excel does not apply a filter when it opens a workbook; it shows the rows as the file marks them. Criteria written without the rows hidden open with every row showing.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "Region",
+                "Amount"
+              ],
+              [
+                "West",
+                120
+              ],
+              [
+                "East",
+                80
+              ],
+              [
+                "West",
+                45
+              ],
+              [
+                "North",
+                300
+              ],
+              [
+                "East",
+                10
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_manage_filter",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "set",
+            "cell_range": "A1:B6",
+            "column": "Region",
+            "criteria1": "=West"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "rows.hidden",
+          "equals": 3
+        },
+        {
+          "path": "rows.shown",
+          "equals": 2
+        }
+      ]
+    },
+    {
+      "id": "comments.a-note-is-written-and-read",
+      "why": "A note is how the next reader of a workbook learns why a cell is what it is.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_comment",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "set",
+            "cell": "B2",
+            "text": "Checked",
+            "author": "A"
+          }
+        },
+        {
+          "tool": "xlide_manage_comment",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 1
+        },
+        {
+          "path": "comments",
+          "contains": "\"kind\": \"note\""
+        },
+        {
+          "path": "comments",
+          "contains": "Checked"
+        }
+      ]
+    },
+    {
+      "id": "charts.a-chart-is-added-with-its-series",
+      "why": "A chart is read back the way Excel's formula bar shows a series, so an agent can check it charts what it was meant to.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "Month",
+                "Sales"
+              ],
+              [
+                "Jan",
+                10
+              ],
+              [
+                "Feb",
+                14
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_add_chart",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "data_range": "A1:B3",
+            "chart_type": "column",
+            "cell": "D2",
+            "chart_name": "Trend"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "chart.name",
+          "equals": "Trend"
+        },
+        {
+          "path": "chart.series",
+          "contains": "=SERIES("
         }
       ]
     },
