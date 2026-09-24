@@ -238,17 +238,25 @@ def test_the_access_catalog_refuses_the_others(
 def test_an_orphaned_design_is_reported_rather_than_counted(
     call: Callable[..., Any], workspace: Path
 ) -> None:
-    """PowerPoint's own template ships a UserForm1 storage with no module, which
-    is the state a rename or delete of a form's module used to leave behind. The
-    editor does not show it, so counting it as an ordinary form reports a form
-    the user cannot open."""
+    """A designer storage with no module is what deleting a form's module on its
+    own leaves behind. The editor does not show it, so counting it as an ordinary
+    form reports a form the user cannot open.
+
+    Built by deleting the module through pyOpenVBA directly, which still leaves
+    the storage, rather than through this server, which refuses to. Until 6.1
+    PowerPoint's template shipped in exactly this state and served as the
+    fixture; the template was remade from a clean presentation."""
     import pyopenvba
 
-    path = workspace / "Deck.pptm"
-    with pyopenvba.PowerPointFile.create_new(path) as deck:
-        deck.save()
+    path = workspace / "Orphan.xlsm"
+    with pyopenvba.ExcelFile.create_new(path) as book:
+        book.add_form("Wizard", caption="Setup")
+        book.save()
+    with pyopenvba.ExcelFile(path) as book:
+        book.vba_project().delete_module("Wizard")
+        book.save()
 
     listed = call("xlide_list_forms", file_path=str(path))
-    orphans = [entry for entry in listed["forms"] if entry.get("orphaned")]
-    assert orphans, "the template carries a storage with no module"
+    orphans = [entry["name"] for entry in listed["forms"] if entry.get("orphaned")]
+    assert orphans == ["Wizard"]
     assert "does not show it" in listed["note"]

@@ -3,10 +3,10 @@
   "digest": "sha256:4a9272037e2b0c41ffe3f2785125edcc76af5197abc9f994551b4c17284a6864",
   "generated_with": {
     "upstream": {
-      "pyOfficeEditor": "0.2.2",
-      "pyOpenVBA": "6.0.0",
-      "pyvbaanalysis": "2.1.1",
-      "pyvbaharness": "not installed"
+      "pyOfficeEditor": "0.3.0",
+      "pyOpenVBA": "6.1.2",
+      "pyvbaanalysis": "2.2.1",
+      "pyvbaharness": "1.1.5"
     }
   },
   "reference_implementation": "python",

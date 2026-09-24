@@ -354,7 +354,7 @@ def office_report() -> dict[str, Any]:
             continue
         access = _registry(
             _HKCU,
-            rf"Software\Microsoft\Office\{office_version}\{detail.security_key}\Security",
+            rf"Software\Microsoft\Office\{office_version}\{_settings_key(detail)}\Security",
             "AccessVBOM",
         )
         found[key]["vba_project_access"] = "enabled" if access == 1 else "disabled"
@@ -390,6 +390,16 @@ def office_report() -> dict[str, Any]:
 
 _HKLM = "HKEY_LOCAL_MACHINE"
 _HKCU = "HKEY_CURRENT_USER"
+
+
+def _settings_key(detail: Any) -> str:
+    """The application's subkey under Software\\Microsoft\\Office\\<version>.
+
+    pyVBAharness 1.1.3 renamed `security_key` to `registry_key`, and the old name
+    raised AttributeError here, which took the whole of xlide_doctor down with it.
+    Read by feature rather than by version, so either release answers.
+    """
+    return str(getattr(detail, "registry_key", "") or getattr(detail, "security_key", ""))
 
 
 def _registry(root: str, path: str, name: str | None = None) -> Any:

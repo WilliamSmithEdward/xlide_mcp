@@ -54,6 +54,25 @@ def test_project_info_is_one_shot(
     assert plain["sheets"][0]["name"] == "Sheet1"
 
 
+def test_doctor_answers(call: Callable[..., Any]) -> None:
+    """Nothing called xlide_doctor, so when pyVBAharness 1.1.3 renamed the field it
+    reads, the tool raised for everyone with the live extra and the suite stayed
+    green. On a machine with Office this runs the registry probe it broke in."""
+    report = call("xlide_doctor")
+    assert report["server_version"]
+    assert "available" in report["execution"]
+    assert set(report["layers"]) >= {"files", "analysis", "execution"}
+
+
+def test_the_office_settings_key_is_read_under_either_name() -> None:
+    from types import SimpleNamespace
+
+    from xlide_mcp.tools.execution import _settings_key
+
+    assert _settings_key(SimpleNamespace(registry_key="Excel")) == "Excel"
+    assert _settings_key(SimpleNamespace(security_key="Word")) == "Word"
+
+
 def test_validate_project_on_a_healthy_file(call: Callable[..., Any], workbook: Path) -> None:
     report = call("xlide_validate_project", file_path=str(workbook))
     assert report["supported"] is True

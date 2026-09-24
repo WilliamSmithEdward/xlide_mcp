@@ -29,7 +29,7 @@ libraries that hold the measured knowledge of the Office file formats:
 |---|---|
 | [pyOpenVBA](https://github.com/WilliamSmithEdward/pyOpenVBA) | How to read and write VBA, UserForm designs and Power Query inside the containers. |
 | [pyOfficeEditor](https://github.com/WilliamSmithEdward/pyOfficeEditor) | The document surface: cells, formulas, formatting, tables, validation, rows and columns. |
-| [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | 119 diagnostics, each measured against its host's object model. |
+| [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | 131 diagnostics, each measured against its host's object model. |
 | [pyVBAharness](https://github.com/WilliamSmithEdward/pyVBAharness) | How to run VBA in desktop Office without wedging on a dialog. |
 
 The split between the first two is the file itself: pyOpenVBA edits the VBA
