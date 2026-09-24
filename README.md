@@ -167,6 +167,11 @@ its queries and its sheets are fully reachable.
 A recognized extension outside those sets is listed with the reason it cannot be
 opened. Nothing drops out of a listing without saying why.
 
+Excel, Word and PowerPoint write no VBA project into a macro-enabled file until
+its first macro exists, so a `.xlsm` nobody has written code in yet has none.
+That is an ordinary file: the listings answer empty, and the first module
+written gives it the project its application would have made.
+
 A `.xlsb` keeps its grid in binary records and a `.xls` inside a compound file,
 neither of them OOXML. On Windows with Excel, those go through Excel, and the
 result says `source: excel` and `recalculated: true`, because opening the

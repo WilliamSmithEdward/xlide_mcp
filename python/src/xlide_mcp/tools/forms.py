@@ -191,6 +191,11 @@ def register(server: MCPServer, settings: Settings) -> None:
             raise ToolError(f"Reports exist in Access databases; {path.name} is {info.title}.")
 
         with project_layer.open_project(path, info) as handle:
+            # A form is a component like a module, so the first one in a file saved
+            # before its first macro gives the file its project, as a module does.
+            project_created = wanted == "create" and project_layer.ensure_project(
+                handle, info, path
+            )
             detail = _manage(handle, info, wanted, form_name, new_name, wanted_design,
                              caption, width, height)
             save_warnings = project_layer.save(
@@ -209,6 +214,8 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if save_warnings:
             result["warnings"] = save_warnings
+        if project_created:
+            result["vba_project_created"] = True
         if wanted == "create":
             result["next_step"] = (
                 "Add controls with xlide_edit_form, and write the event procedures with "

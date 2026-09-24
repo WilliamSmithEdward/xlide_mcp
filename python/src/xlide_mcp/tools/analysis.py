@@ -76,6 +76,7 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
+            has_project = project_layer.has_project(handle, info)
         prepared = project_layer.analysis_inputs(modules)
         by_name = {item.name.casefold(): item for item in prepared}
         bodies = {m.name.casefold(): m.body for m in modules}
@@ -130,6 +131,8 @@ def register(server: MCPServer, settings: Settings) -> None:
                 f"{total - len(shown)} further problems not listed. Raise min_severity, or "
                 "narrow to one module, to see the rest."
             )
+        if not has_project:
+            result["note"] = project_layer.no_project_note(path, info)
         if counts["error"]:
             result["next_step"] = (
                 "Fix every problem at error severity and analyze again. An error here is what "

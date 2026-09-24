@@ -14,6 +14,13 @@ module:
 
 Saves carry two guards that both mean "stop and ask the user", never "try harder":
 a password-protected project, and a digital signature the save would invalidate.
+
+A file can also hold no project at all. Excel, Word and PowerPoint write no
+vbaProject.bin into a macro-enabled file until its first macro exists, so a
+.xlsm nobody has written code in yet is an ordinary file, not a damaged one. The
+listings answer it as empty, a read of something named says the file has no
+project, and the first module written into a .xlsm, .docm or .pptm gives it the
+project its application would have made.
 """
 
 from __future__ import annotations
@@ -89,6 +96,9 @@ class ProjectStatus:
     digitally_signed: bool | None
     """None where this server does not detect signatures for the host (Access)."""
 
+    has_project: bool = True
+    """False for a macro-enabled file saved before its first macro existed."""
+
     def warnings(self) -> list[str]:
         out: list[str] = []
         if self.password_protected:
@@ -102,6 +112,61 @@ class ProjectStatus:
                 "the signature, and the save drops it. Ask the user first."
             )
         return out
+
+
+# The formats a project can be added to. The applications were measured making
+# one for a first macro in these three; a binary .xls, .doc or .ppt keeps its
+# project in storages this server does not create, and a .xlsb its workbook
+# properties in binary records.
+_PROJECT_CAN_BE_ADDED = frozenset({".xlsm", ".docm", ".pptm"})
+
+
+def can_add_project(info: HostInfo) -> bool:
+    """Whether a file of this format can be given a VBA project it does not have."""
+    return info.extension in _PROJECT_CAN_BE_ADDED
+
+
+def has_project(handle: Any, info: HostInfo) -> bool:
+    """Whether the file holds a VBA project, empty or not.
+
+    Access always does: a blank database Access writes carries an empty project,
+    so a missing one there is damage rather than a normal state, and it stays an
+    error. A VB6 project is its manifest.
+    """
+    check = getattr(handle, "has_vba_project", None)
+    if info.host in {"access", "vb6"} or not callable(check):
+        return True
+    return bool(check())
+
+
+def no_project_note(path: Path, info: HostInfo) -> str:
+    """What to tell an agent about a file that has no VBA project yet."""
+    if info.extension in _PROJECT_CAN_BE_ADDED:
+        return (
+            f"{path.name} has no VBA project yet. {info.title} writes none until the first "
+            "macro exists, so this is a normal file, not a damaged one. xlide_write_module "
+            "creates the project along with the first module."
+        )
+    return (
+        f"{path.name} has no VBA project. A {info.extension} file keeps one in storages this "
+        f"server does not create, so the first macro has to be written in {info.title}, or "
+        f"the file saved as a macro-enabled OOXML file first."
+    )
+
+
+def ensure_project(handle: Any, info: HostInfo, path: Path) -> bool:
+    """Give a file with no VBA project the one its application makes for a first macro.
+
+    Returns whether a project was created. pyOpenVBA builds it as the application
+    does: in Excel a document module for the workbook and one per sheet, in Word
+    ThisDocument, in PowerPoint nothing until a module is added.
+    """
+    if has_project(handle, info):
+        return False
+    if info.extension not in _PROJECT_CAN_BE_ADDED:
+        raise ToolError(no_project_note(path, info))
+    handle.add_vba_project()
+    return True
 
 
 def form_module_names(handle: Any, info: HostInfo) -> set[str]:
@@ -202,18 +267,52 @@ def is_standard_component(component: Any) -> bool:
     return bool(kind == pyopenvba.VBAModuleKind.standard)
 
 
-def find_module(modules: list[ModuleView], name: str) -> ModuleView:
-    """Look a module up the way VBA compares names: without regard to case."""
+def find_module(
+    modules: list[ModuleView], name: str, *, no_project: str = ""
+) -> ModuleView:
+    """Look a module up the way VBA compares names: without regard to case.
+
+    `no_project` is the note for a file with no VBA project, which is the answer
+    to give instead of an empty list of the modules it does not have.
+    """
     wanted = name.strip().casefold()
     for module in modules:
         if module.name.casefold() == wanted:
             return module
+    if no_project and not modules:
+        raise ToolError(f"No module named {name!r}: {no_project}")
     known = ", ".join(m.name for m in modules) or "(none)"
     raise ToolError(f"No module named {name!r}. Modules in this project: {known}.")
 
 
+def find_module_in(
+    handle: Any,
+    info: HostInfo,
+    path: Path,
+    name: str,
+    modules: list[ModuleView] | None = None,
+) -> ModuleView:
+    """`find_module` over an open file, saying so when the file has no project.
+
+    Pass `modules` when the caller has already read them, so they are not read
+    twice.
+    """
+    if modules is None:
+        modules = read_modules(handle, info)
+    note = "" if modules or has_project(handle, info) else no_project_note(path, info)
+    return find_module(modules, name, no_project=note)
+
+
 def project_status(handle: Any, info: HostInfo) -> ProjectStatus:
     """Name, module count, and the two states that gate a write."""
+    if not has_project(handle, info):
+        return ProjectStatus(
+            project_name="",
+            module_count=0,
+            password_protected=False,
+            digitally_signed=False,
+            has_project=False,
+        )
     project = handle.vba_project()
     protection = getattr(project, "protection", None)
     protected = bool(getattr(protection, "has_password", False))
@@ -325,14 +424,39 @@ def analysis_inputs(modules: list[ModuleView]) -> list[AnalysisInput]:
     return prepared
 
 
+def references(handle: Any, info: HostInfo) -> list[Any]:
+    """The libraries a project declares, in priority order, or none for no project.
+
+    One call for every host since pyOpenVBA 6.1: Access keeps its list in the
+    database and the others in the dir stream, and both answer `references()`.
+    """
+    import pyopenvba
+
+    if info.host == "vb6":
+        # A .vbp's manifest lists them; it is a property there, not a call.
+        return list(handle.references)
+    try:
+        return list(handle.references())
+    except pyopenvba.NoVBAProjectError:
+        return []
+
+
 def open_project(path: Path, info: HostInfo | None = None) -> container:
     """`with open_project(path) as book:`"""
     return container(path, info or require_readable(path))
 
 
 def _components(handle: Any) -> Iterator[Any]:
-    """Every module component of an open project, whatever the host."""
-    return iter(handle.vba_project().modules)
+    """Every module component of an open project, whatever the host.
+
+    A file with no project has none, which is an answer rather than a failure.
+    """
+    import pyopenvba
+
+    try:
+        return iter(handle.vba_project().modules)
+    except pyopenvba.NoVBAProjectError:
+        return iter(())
 
 
 def _signature_present(handle: Any, info: HostInfo) -> bool | None:

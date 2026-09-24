@@ -63,6 +63,8 @@ Power Query as well as VBA. Neither compares cell values.
 what holds it. xlide_is_open says whether that copy is read-only and whether it holds \
 unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and \
 reopened around the write; anything else is the user's to close.
+- A macro-enabled file saved before its first macro has no VBA project. That is normal: \
+the listings answer empty, and xlide_write_module gives the file its project.
 - Access runs its compiled project, so a module written here takes effect when Access \
 next opens the database.
 - Cell values read from the file are what Excel last calculated. A formula you write, \

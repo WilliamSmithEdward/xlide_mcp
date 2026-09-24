@@ -201,6 +201,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             )
 
         with project_layer.open_project(path, info) as handle:
+            # Made before the plan, in memory, so a file saved before its first
+            # macro is planned against the document modules its project will hold.
+            # A preview never saves, so the project exists only if this applies.
+            project_created = project_layer.ensure_project(handle, info, path)
             modules = project_layer.read_modules(handle, info)
             by_name = {m.name.casefold(): m for m in modules}
 
@@ -271,6 +275,8 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if save_warnings:
             result["warnings"] = save_warnings
+        if project_created:
+            result["vba_project_created"] = True
         notice = _tell_xlide(path, info, changing, by_name)
         if notice:
             result["xlide_vscode"] = notice

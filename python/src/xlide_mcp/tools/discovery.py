@@ -15,6 +15,7 @@ from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
 from .. import project as project_layer
+from .. import xlide_vscode
 from ..config import Settings
 from ..errors import ToolError
 from ..hosts import CREATABLE, NOT_READABLE, host_info, iter_office_files, require_readable
@@ -93,8 +94,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Everything about one Office file in a single call: its VBA modules with kinds "
             "and line counts, its UserForms, its Power Query queries, its worksheets with "
             "used ranges and named ranges, and whether the VBA project is password-protected "
-            "or digitally signed. Call this once per file before working on it. Each module "
-            "carries a content_token for a guarded write."
+            "or digitally signed. has_vba_project is false for a macro-enabled file saved "
+            "before its first macro, which is normal: the first xlide_write_module gives it "
+            "a project. Call this once per file before working on it. Each module carries a "
+            "content_token for a guarded write."
         ),
     )
     def project_info(
@@ -115,6 +118,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             with project_layer.open_project(path, info) as handle:
                 modules = project_layer.read_modules(handle, info)
                 status = project_layer.project_status(handle, info)
+                result["has_vba_project"] = status.has_project
+                if not status.has_project:
+                    result["vba_note"] = project_layer.no_project_note(path, info)
                 result["project_name"] = status.project_name
                 shown, note = bound(
                     [m.summary() for m in modules],
@@ -160,45 +166,58 @@ def register(server: MCPServer, settings: Settings) -> None:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
+            has_project = project_layer.has_project(handle, info)
             try:
-                problems = list(handle.validate())
+                problems = list(handle.validate()) if has_project else []
             except AttributeError:
                 return {
                     "path": str(path),
                     "supported": False,
                     "note": f"Structural validation is not implemented for {info.title} files.",
                 }
-        return {
+        result: dict[str, Any] = {
             "path": str(path),
             "supported": True,
+            "has_vba_project": has_project,
             "problem_count": len(problems),
             "problems": problems,
             "verdict": "clean" if not problems else "problems found",
         }
+        if not has_project:
+            result["note"] = project_layer.no_project_note(path, info)
+        return result
 
     @server.tool(
         name="xlide_create_project",
-        title="Create Office file",
-        annotations=writes("Create Office file", destructive=False, idempotent=False),
+        title="Create Office file or VBA project",
+        annotations=writes(
+            "Create Office file or VBA project", destructive=False, idempotent=False
+        ),
         description=(
             "Creates a new Office file with an empty VBA project at the given absolute path, "
             "from a template the application itself authored, so it opens with no repair "
             "prompt. Extensions: .xlsm, .xlsb, .xlam, .docm, .pptm, .accdb, and .xlsx for a "
-            "workbook with Power Query and no macros. It never overwrites an existing file."
+            "workbook with Power Query and no macros. It never overwrites a file or replaces "
+            "a project that is already there. A .xlsm, .docm or .pptm saved before its first "
+            "macro has no VBA project at all; xlide_write_module gives it one along with the "
+            "first module, and this tool gives an existing .docm the empty one Word makes."
         ),
     )
     def create_project(
         file_path: Annotated[
-            str, Field(description="Absolute path to create. The extension picks the format.")
+            str,
+            Field(
+                description=(
+                    "Absolute path to create, whose extension picks the format, or an existing "
+                    ".docm with no VBA project."
+                )
+            ),
         ],
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_create_project")
         path = resolve_path(file_path, settings, must_exist=False)
         if path.exists():
-            raise ToolError(
-                f"{path} already exists. This tool never overwrites a file; "
-                "pick another path, or work on the existing one."
-            )
+            return _add_project(path)
         extension = path.suffix.lower()
         if extension not in CREATABLE:
             hint = NOT_READABLE.get(extension, "")
@@ -273,6 +292,62 @@ def register(server: MCPServer, settings: Settings) -> None:
         report["execution"] = office_report()
         report["live_sessions"] = live_report()
         return report
+
+
+def _add_project(path: Path) -> dict[str, Any]:
+    """Give an existing file with no VBA project the one its application makes.
+
+    Refused for everything else, with the reason: a file that has a project keeps
+    it, and a format that cannot take one is named rather than written to.
+
+    Only Word keeps a project with no code in it, ThisDocument alone. Excel and
+    PowerPoint write none until it holds a module, and pyOpenVBA saves as they
+    do, so for a .xlsm or .pptm there is nothing an empty project would leave in
+    the file. Saying so beats reporting a project that the next read will not
+    find: the first xlide_write_module brings the project with it.
+    """
+    if not path.is_file():
+        raise ToolError(f"{path} exists and is not a file.")
+    info = host_info(path)
+    if not info.readable or not project_layer.can_add_project(info):
+        raise ToolError(
+            f"{path} already exists. This tool never overwrites a file; pick another path, "
+            "or work on the existing one."
+        )
+    with project_layer.open_project(path, info) as handle:
+        if project_layer.has_project(handle, info):
+            raise ToolError(
+                f"{path} already exists, with a VBA project. This tool never overwrites a "
+                "file or replaces a project; write modules into it with xlide_write_module."
+            )
+        if info.host != "word":
+            raise ToolError(
+                f"{path} already exists, with no VBA project, and an empty one cannot be "
+                f"added to it: {info.title} writes no project until it holds code, and "
+                "neither does this server. Write the first module with xlide_write_module, "
+                f"which gives the file the project {info.title} would make, with the module "
+                "in it."
+            )
+        project_layer.ensure_project(handle, info, path)
+        modules = [m.name for m in project_layer.read_modules(handle, info)]
+        project_layer.save(handle, info, path=path)
+    with project_layer.open_project(path, info) as handle:
+        kept = project_layer.has_project(handle, info)
+    result: dict[str, Any] = {
+        "path": str(path),
+        "created": False,
+        "vba_project_created": kept,
+        "host": info.host,
+        "modules": modules if kept else [],
+        "note": (
+            f"{path.name} now has the VBA project Word makes for a first macro, ThisDocument "
+            "and nothing else. Add code with xlide_write_module."
+        ),
+    }
+    notice = xlide_vscode.file_changed(path, "vba", tool="xlide_create_project")
+    if notice:
+        result["xlide_vscode"] = notice
+    return result
 
 
 def _version() -> str:

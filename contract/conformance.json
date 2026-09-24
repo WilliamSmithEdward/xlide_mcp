@@ -181,9 +181,16 @@
           "formula": "let Source = {1..10} in Source"
         }
       ]
+    },
+    "no_vba_workbook": {
+      "kind": "shipped-binary",
+      "file_name": "Empty.xlsm",
+      "repository_path": "python/tests/fixtures/no_vba/workbook.xlsm",
+      "why": "A workbook Excel saved as .xlsm before any macro existed, which has no vbaProject.bin at all. Shipped because the point is what Excel writes: a library building a workbook would put a project in it. pyOpenVBA's scripts/measure_no_vba.py made it.",
+      "contents": "One empty sheet, Sheet1, and no VBA project."
     }
   },
-  "case_count": 77,
+  "case_count": 81,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -2274,6 +2281,105 @@
           "equals": "Mod319"
         }
       ]
+    },
+    {
+      "id": "no-vba.the-listings-answer-empty",
+      "why": "Excel writes no vbaProject.bin into a .xlsm until its first macro exists. That is an ordinary file, and a listing that failed on it tells an agent the file is damaged.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "no_vba_workbook",
+      "expect": [
+        {
+          "path": "has_vba_project",
+          "equals": false
+        },
+        {
+          "path": "count",
+          "equals": 0
+        },
+        {
+          "path": "note",
+          "contains": "has no VBA project yet"
+        }
+      ]
+    },
+    {
+      "id": "no-vba.a-named-read-says-there-is-no-project",
+      "why": "The refusal names the file's state, rather than an empty list of the modules it does not have.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Module1"
+          },
+          "error_contains": "has no VBA project yet"
+        }
+      ],
+      "fixture": "no_vba_workbook"
+    },
+    {
+      "id": "no-vba.the-first-module-brings-the-project",
+      "why": "The first module gives the file the project Excel makes for a first macro: a document module for the workbook and one for each sheet, beside the new one.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n"
+          }
+        },
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "no_vba_workbook",
+      "expect": [
+        {
+          "path": "has_vba_project",
+          "equals": true
+        },
+        {
+          "path": "modules",
+          "contains": "ThisWorkbook"
+        },
+        {
+          "path": "modules",
+          "contains": "Sheet1"
+        },
+        {
+          "path": "modules",
+          "contains": "Helpers"
+        }
+      ]
+    },
+    {
+      "id": "no-vba.an-empty-excel-project-is-not-added",
+      "why": "Excel writes no project until it holds code, so an empty one added to a .xlsm would be reported and then be missing on the next read.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_create_project",
+          "arguments": {
+            "file_path": "${fixture}"
+          },
+          "error_contains": "writes no project until it holds code"
+        }
+      ],
+      "fixture": "no_vba_workbook"
     },
     {
       "id": "workspace.refuses-a-path-outside-the-roots",

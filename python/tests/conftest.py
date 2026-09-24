@@ -199,6 +199,22 @@ def shapes_workbook(workspace: Path) -> Path:
     return target
 
 
+@pytest.fixture
+def no_vba_workbook(workspace: Path) -> Path:
+    """A workbook Excel saved as .xlsm before any macro existed: no vbaProject.bin.
+
+    Shipped because the point is what Excel itself writes; pyOpenVBA's
+    scripts/measure_no_vba.py made it, and its tests/fixtures/no_vba holds the
+    same file with the Word and PowerPoint ones.
+    """
+    import shutil
+
+    source = Path(__file__).parent / "fixtures" / "no_vba" / "workbook.xlsm"
+    target = workspace / "Empty.xlsm"
+    shutil.copy2(source, target)
+    return target
+
+
 ACCESS_MODULE = """Option Compare Database
 Option Explicit
 

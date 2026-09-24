@@ -298,6 +298,18 @@ FIXTURES: dict[str, Any] = {
         ),
         "power_query": [{"name": "Numbers", "formula": "let Source = {1..10} in Source"}],
     },
+    "no_vba_workbook": {
+        "kind": "shipped-binary",
+        "file_name": "Empty.xlsm",
+        "repository_path": "python/tests/fixtures/no_vba/workbook.xlsm",
+        "why": (
+            "A workbook Excel saved as .xlsm before any macro existed, which has no "
+            "vbaProject.bin at all. Shipped because the point is what Excel writes: a "
+            "library building a workbook would put a project in it. pyOpenVBA's "
+            "scripts/measure_no_vba.py made it."
+        ),
+        "contents": "One empty sheet, Sheet1, and no VBA project.",
+    },
 }
 
 
@@ -1908,6 +1920,8 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    out.extend(_cases_since_1_1())
+
     # ----------------------------------------------------------- the boundary
     out.append(
         case(
@@ -1934,6 +1948,82 @@ def cases() -> list[dict[str, Any]]:
                     "xlide_list_modules",
                     {"file_path": "${fixture}/../../elsewhere.xlsm"},
                     error_contains="outside this server's workspace",
+                )
+            ],
+        )
+    )
+
+    return out
+
+
+def _cases_since_1_1() -> list[dict[str, Any]]:
+    """What 1.1 added: files with no project. Kept together so a port can see the
+    new work."""
+    out: list[dict[str, Any]] = []
+
+    # ------------------------------------------------ a file with no project
+    out.append(
+        case(
+            "no-vba.the-listings-answer-empty",
+            "Excel writes no vbaProject.bin into a .xlsm until its first macro exists. That "
+            "is an ordinary file, and a listing that failed on it tells an agent the file is "
+            "damaged.",
+            "no_vba_workbook",
+            [step("xlide_list_modules", {"file_path": "${fixture}"})],
+            [
+                {"path": "has_vba_project", "equals": False},
+                {"path": "count", "equals": 0},
+                {"path": "note", "contains": "has no VBA project yet"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "no-vba.a-named-read-says-there-is-no-project",
+            "The refusal names the file's state, rather than an empty list of the modules "
+            "it does not have.",
+            "no_vba_workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Module1"},
+                    error_contains="has no VBA project yet",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "no-vba.the-first-module-brings-the-project",
+            "The first module gives the file the project Excel makes for a first macro: a "
+            "document module for the workbook and one for each sheet, beside the new one.",
+            "no_vba_workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers", "source": HELPERS},
+                ),
+                step("xlide_list_modules", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "has_vba_project", "equals": True},
+                {"path": "modules", "contains": "ThisWorkbook"},
+                {"path": "modules", "contains": "Sheet1"},
+                {"path": "modules", "contains": "Helpers"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "no-vba.an-empty-excel-project-is-not-added",
+            "Excel writes no project until it holds code, so an empty one added to a .xlsm "
+            "would be reported and then be missing on the next read.",
+            "no_vba_workbook",
+            [
+                step(
+                    "xlide_create_project",
+                    {"file_path": "${fixture}"},
+                    error_contains="writes no project until it holds code",
                 )
             ],
         )

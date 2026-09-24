@@ -55,13 +55,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             # Access keeps its references in the database and the other three keep
             # theirs in the dir stream, but both record the same libid string, so
             # one reader serves.
-            raw = (
-                handle.references()
-                if info.host == "access"
-                else getattr(handle.vba_project(), "references", [])
-            )
-            entries = [_reference(reference) for reference in raw]
-        return {
+            entries = [_reference(ref) for ref in project_layer.references(handle, info)]
+            has_project = project_layer.has_project(handle, info)
+        result: dict[str, Any] = {
             "path": str(path),
             "host": info.host,
             "count": len(entries),
@@ -72,6 +68,9 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "not there."
             ),
         }
+        if not has_project:
+            result["note"] = project_layer.no_project_note(path, info)
+        return result
 
     @server.tool(
         name="xlide_access_catalog",

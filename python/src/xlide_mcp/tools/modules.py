@@ -78,6 +78,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
+            has_project = project_layer.has_project(handle, info)
         shown, note = bound(
             [m.summary() for m in modules],
             "modules",
@@ -86,11 +87,14 @@ def register(server: MCPServer, settings: Settings) -> None:
         result: dict[str, Any] = {
             "path": str(path),
             "host": info.host,
+            "has_vba_project": has_project,
             "count": len(modules),
             "modules": shown,
         }
         if note:
             result["note"] = note
+        if not has_project:
+            result["note"] = project_layer.no_project_note(path, info)
         return result
 
     @server.tool(
@@ -129,8 +133,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
-            modules = project_layer.read_modules(handle, info)
-        module = project_layer.find_module(modules, module_name)
+            module = project_layer.find_module_in(handle, info, path, module_name)
 
         source = module.full_source if include_header else module.body
         lines = source.splitlines()
@@ -177,8 +180,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
-            modules = project_layer.read_modules(handle, info)
-        module = project_layer.find_module(modules, module_name)
+            module = project_layer.find_module_in(handle, info, path, module_name)
         return {
             "path": str(path),
             "module": module.name,
@@ -226,6 +228,7 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
+            has_project = project_layer.has_project(handle, info)
 
         matches: list[dict[str, Any]] = []
         truncated = False
@@ -241,13 +244,16 @@ def register(server: MCPServer, settings: Settings) -> None:
                 )
             if truncated:
                 break
-        return {
+        result: dict[str, Any] = {
             "path": str(path),
             "query": query,
             "match_count": len(matches),
             "truncated": truncated,
             "matches": matches,
         }
+        if not has_project:
+            result["note"] = project_layer.no_project_note(path, info)
+        return result
 
     @server.tool(
         name="xlide_write_module",
@@ -321,6 +327,11 @@ def register(server: MCPServer, settings: Settings) -> None:
             raise ToolError("kind must be 'standard' or 'class'.")
 
         with project_layer.open_project(path, info) as handle:
+            # A file saved before its first macro has no project to add a module
+            # to. It gets the one its application makes, which in Excel already
+            # holds ThisWorkbook and a module per sheet, so the lookup below runs
+            # against what the file holds after that, not before.
+            project_created = project_layer.ensure_project(handle, info, path)
             modules = project_layer.read_modules(handle, info)
             existing = next(
                 (m for m in modules if m.name.casefold() == module_name.strip().casefold()), None
@@ -396,6 +407,12 @@ def register(server: MCPServer, settings: Settings) -> None:
                 result["diff_truncated"] = True
         if save_warnings:
             result["warnings"] = save_warnings
+        if project_created:
+            result["vba_project_created"] = True
+            result["note"] = (
+                f"{path.name} had no VBA project, so it now has the one {info.title} makes "
+                "for a first macro, with this module in it."
+            )
         notice = xlide_vscode.module_written(
             path,
             after.name,
@@ -439,7 +456,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
-            module = project_layer.find_module(modules, module_name)
+            module = project_layer.find_module_in(handle, info, path, module_name, modules)
             if project_layer.is_document_module(module.kind):
                 raise ToolError(
                     f"{module.name} is a document module: {info.title} owns it and recreates "
@@ -519,8 +536,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
-            modules = project_layer.read_modules(handle, info)
-            module = project_layer.find_module(modules, module_name)
+            module = project_layer.find_module_in(handle, info, path, module_name)
             if project_layer.is_document_module(module.kind):
                 raise ToolError(
                     f"{module.name} is a document module and cannot be deleted; "
