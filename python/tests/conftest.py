@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+import urllib.request
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -284,3 +285,20 @@ def crowded_workbook(workspace: Path) -> Path:
             book.vba_project().add_module(f"Mod{i:03d}", body)
         book.save()
     return path
+
+
+@pytest.fixture
+def proxy_in_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    """HTTP_PROXY set to a port that refuses, as on a machine behind a proxy.
+
+    urllib reads the proxies once, when the first urlopen builds its shared
+    opener. The opener is dropped before the test, so that it sees the variable,
+    and after it, so that no later test inherits a proxy that refuses.
+    """
+    proxy = "http://127.0.0.1:9"
+    monkeypatch.setenv("HTTP_PROXY", proxy)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    urllib.request.install_opener(None)
+    yield proxy
+    urllib.request.install_opener(None)

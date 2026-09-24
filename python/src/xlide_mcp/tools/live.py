@@ -19,6 +19,7 @@ life: every instance is probed rather than trusted.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import sys
@@ -42,6 +43,10 @@ DISCOVERY_GLOB = "xlide-api-*.json"
 # The add-in answers on the host thread with a three second deadline of its own.
 # Anything past this is a wedged VBE, not slow work.
 REQUEST_TIMEOUT = 10.0
+
+# urllib's default opener sends 127.0.0.1 through HTTP_PROXY or the system proxy
+# like any other host, which would hand the proxy the session's token.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 # Routes a caller may reach through xlide_live_request. Everything that reads the
 # session is here; the page-driving routes are not, because "drive the editor the
@@ -353,7 +358,7 @@ def _request(instance: Instance, route: str, query: str = "") -> Any:
         url += "?" + query.lstrip("?")
     request = urllib.request.Request(url, method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=REQUEST_TIMEOUT) as response:
+        with _OPENER.open(request, timeout=REQUEST_TIMEOUT) as response:
             body = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
@@ -363,7 +368,9 @@ def _request(instance: Instance, route: str, query: str = "") -> Any:
                 "xlide_live_request(route='agent/routes') for the routes it has."
             ) from exc
         raise ToolError(f"The live session answered {exc.code} for {route}.") from exc
-    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+    except (urllib.error.URLError, http.client.HTTPException, OSError) as exc:
+        # HTTPException is a stale discovery file's port now held by something
+        # that does not speak HTTP, which is a closed session like any other.
         raise ToolError(
             f"No answer from the session at pid {instance.pid}: {exc}. The host process may "
             "have closed, or the Visual Basic Editor may be busy running the user's code."
