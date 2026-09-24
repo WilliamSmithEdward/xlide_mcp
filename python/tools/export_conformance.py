@@ -310,6 +310,29 @@ FIXTURES: dict[str, Any] = {
         ),
         "contents": "One empty sheet, Sheet1, and no VBA project.",
     },
+    "signed_workbook": {
+        "kind": "excel-macro-workbook",
+        "file_name": "Budget.xlsm",
+        "why": (
+            "The workbook fixture with a digital signature where Office keeps one for a "
+            "zip-based file: a part beside vbaProject.bin, not its streams. The bytes are "
+            "not a real signature; what is under test is where the file says one is, which "
+            "is what Excel reads VBASigned from."
+        ),
+        "modules": [{"name": "Helpers", "kind": "standard", "source": HELPERS}],
+        "signature": {
+            "part": "xl/vbaProjectSignature.bin",
+            "content": "Any bytes.",
+            "relationship": (
+                "From xl/_rels/vbaProject.bin.rels, of type "
+                "http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature."
+            ),
+            "content_type": (
+                "An Override for /xl/vbaProjectSignature.bin in [Content_Types].xml, "
+                "application/vnd.ms-office.vbaProjectSignature."
+            ),
+        },
+    },
 }
 
 
@@ -1957,8 +1980,8 @@ def cases() -> list[dict[str, Any]]:
 
 
 def _cases_since_1_1() -> list[dict[str, Any]]:
-    """What 1.1 added: files with no project. Kept together so a port can see the
-    new work."""
+    """What 1.1 added: files with no project, and signatures. Kept together so a
+    port can see the new work."""
     out: list[dict[str, Any]] = []
 
     # ------------------------------------------------ a file with no project
@@ -2026,6 +2049,55 @@ def _cases_since_1_1() -> list[dict[str, Any]]:
                     error_contains="writes no project until it holds code",
                 )
             ],
+        )
+    )
+
+    # -------------------------------------------------------------- signatures
+    out.append(
+        case(
+            "signature.a-part-beside-the-project-is-seen",
+            "Office keeps a zip-based file's signature beside vbaProject.bin. A reader that "
+            "looks only inside it calls every signed workbook unsigned.",
+            "signed_workbook",
+            [step("xlide_project_info", {"file_path": "${fixture}"})],
+            [{"path": "digitally_signed", "equals": True}],
+        )
+    )
+    changed = HELPERS + "' changed" + CRLF
+    out.append(
+        case(
+            "signature.a-write-is-refused-until-the-user-agrees",
+            "Saving changed code drops the signature. A warning after the save is not "
+            "asking first, so the write is refused until the flag says the user agreed.",
+            "signed_workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers", "source": changed},
+                    error_contains="allow_invalidate_signature=true",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "signature.with-the-flag-the-signature-goes",
+            "What Office does with changed code: the parts go, with their relationships "
+            "and content types, so Excel no longer reports code as signed that is not.",
+            "signed_workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {
+                        "file_path": "${fixture}",
+                        "module_name": "Helpers",
+                        "source": changed,
+                        "allow_invalidate_signature": True,
+                    },
+                ),
+                step("xlide_project_info", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "digitally_signed", "equals": False}],
         )
     )
 

@@ -247,6 +247,7 @@ them whether or not the user configured anything.
   one Windows names as holding the file.
 - Anything hard to undo is the user's decision: deleting a module, overwriting
   cells that hold data, writing to a project that is signed or password-protected.
+  The last two are refused until the call carries the flag that allows them.
 - A cell value is what Excel last calculated. A formula written here has no result
   until Excel next opens the workbook, and the result says so.
 

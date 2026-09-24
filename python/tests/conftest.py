@@ -215,6 +215,47 @@ def no_vba_workbook(workspace: Path) -> Path:
     return target
 
 
+SIGNATURE_PART = "xl/vbaProjectSignature.bin"
+SIGNATURE_TYPE = "http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature"
+SIGNATURE_CONTENT = "application/vnd.ms-office.vbaProjectSignature"
+
+
+def sign(workbook: Path) -> None:
+    """Give a workbook the signature part Office writes, related from vbaProject.bin.
+
+    The bytes are not a real signature. What is under test is where the file says
+    one is, which is what Excel reads `VBASigned` from.
+    """
+    import zipfile
+
+    signed = workbook.with_suffix(".signing")
+    with zipfile.ZipFile(workbook) as original, zipfile.ZipFile(signed, "w") as out:
+        for name in original.namelist():
+            data = original.read(name)
+            if name == "[Content_Types].xml":
+                override = (
+                    f'<Override PartName="/{SIGNATURE_PART}" ContentType="{SIGNATURE_CONTENT}"/>'
+                )
+                data = data.decode("utf-8").replace("</Types>", override + "</Types>").encode()
+            out.writestr(name, data)
+        out.writestr(
+            "xl/_rels/vbaProject.bin.rels",
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            f'<Relationship Id="rId1" Type="{SIGNATURE_TYPE}" Target="vbaProjectSignature.bin"/>'
+            "</Relationships>",
+        )
+        out.writestr(SIGNATURE_PART, b"\x01\x02 not a real signature")
+    signed.replace(workbook)
+
+
+@pytest.fixture
+def signed_workbook(workbook: Path) -> Path:
+    """The fixture workbook with a digital signature where Office keeps one."""
+    sign(workbook)
+    return workbook
+
+
 ACCESS_MODULE = """Option Compare Database
 Option Explicit
 

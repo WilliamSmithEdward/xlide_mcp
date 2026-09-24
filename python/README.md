@@ -218,7 +218,8 @@ them whether or not the user configured anything.
   says to save or discard it, and a process is ended only when asked.
 - Anything hard to undo is the user's decision: deleting a module, overwriting
   cells that hold data, writing to a project that is signed or
-  password-protected.
+  password-protected. The last two are refused until the call carries the flag
+  that allows them.
 - A cell value read from the package is what Excel last calculated. A formula
   written there has no result until Excel next opens the workbook, and the
   result says so.

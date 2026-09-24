@@ -188,9 +188,27 @@
       "repository_path": "python/tests/fixtures/no_vba/workbook.xlsm",
       "why": "A workbook Excel saved as .xlsm before any macro existed, which has no vbaProject.bin at all. Shipped because the point is what Excel writes: a library building a workbook would put a project in it. pyOpenVBA's scripts/measure_no_vba.py made it.",
       "contents": "One empty sheet, Sheet1, and no VBA project."
+    },
+    "signed_workbook": {
+      "kind": "excel-macro-workbook",
+      "file_name": "Budget.xlsm",
+      "why": "The workbook fixture with a digital signature where Office keeps one for a zip-based file: a part beside vbaProject.bin, not its streams. The bytes are not a real signature; what is under test is where the file says one is, which is what Excel reads VBASigned from.",
+      "modules": [
+        {
+          "name": "Helpers",
+          "kind": "standard",
+          "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n"
+        }
+      ],
+      "signature": {
+        "part": "xl/vbaProjectSignature.bin",
+        "content": "Any bytes.",
+        "relationship": "From xl/_rels/vbaProject.bin.rels, of type http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature.",
+        "content_type": "An Override for /xl/vbaProjectSignature.bin in [Content_Types].xml, application/vnd.ms-office.vbaProjectSignature."
+      }
     }
   },
-  "case_count": 81,
+  "case_count": 84,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -2380,6 +2398,72 @@
         }
       ],
       "fixture": "no_vba_workbook"
+    },
+    {
+      "id": "signature.a-part-beside-the-project-is-seen",
+      "why": "Office keeps a zip-based file's signature beside vbaProject.bin. A reader that looks only inside it calls every signed workbook unsigned.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_project_info",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "signed_workbook",
+      "expect": [
+        {
+          "path": "digitally_signed",
+          "equals": true
+        }
+      ]
+    },
+    {
+      "id": "signature.a-write-is-refused-until-the-user-agrees",
+      "why": "Saving changed code drops the signature. A warning after the save is not asking first, so the write is refused until the flag says the user agreed.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n' changed\r\n"
+          },
+          "error_contains": "allow_invalidate_signature=true"
+        }
+      ],
+      "fixture": "signed_workbook"
+    },
+    {
+      "id": "signature.with-the-flag-the-signature-goes",
+      "why": "What Office does with changed code: the parts go, with their relationships and content types, so Excel no longer reports code as signed that is not.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Explicit\r\n\r\nPublic Function AddNums(ByVal a As Long, ByVal b As Long) As Long\r\n    AddNums = a + b\r\nEnd Function\r\n\r\nPublic Sub Greet()\r\n    Dim who As String\r\n    who = \"world\"\r\n    Debug.Print \"hello \" & who\r\nEnd Sub\r\n' changed\r\n",
+            "allow_invalidate_signature": true
+          }
+        },
+        {
+          "tool": "xlide_project_info",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "signed_workbook",
+      "expect": [
+        {
+          "path": "digitally_signed",
+          "equals": false
+        }
+      ]
     },
     {
       "id": "workspace.refuses-a-path-outside-the-roots",

@@ -161,13 +161,15 @@ Rules the surface holds to, each of which has a conformance case behind it:
   process is ended only with end_process, only the one Windows names as holding
   the file, and only if it is that file's own application.
 - **Hard-to-undo things are the user's decision.** Deleting a module, overwriting
-  cells that hold data, writing to a signed or password-protected project.
+  cells that hold data, writing to a signed or password-protected project. Each
+  of the last two is a refusal until the flag that allows it is passed: a
+  warning after the write is not asking first.
 - **No result is claimed that was not observed.** Nothing in the files layer
   calculates anything, so a cell write answers `recalculated: false`. An
   implementation that reported a computed value it did not compute would be
   lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 22 of the 81 conformance cases
+A refusal is as much of the contract as a success: 23 of the 84 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

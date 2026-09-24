@@ -109,7 +109,8 @@ class ProjectStatus:
         if self.digitally_signed:
             out.append(
                 "The VBA project is digitally signed. Any change to the macros invalidates "
-                "the signature, and the save drops it. Ask the user first."
+                "the signature, and the save drops it, so a write needs "
+                "allow_invalidate_signature=true. Ask the user first."
             )
         return out
 
@@ -345,12 +346,22 @@ def save(
     """
     import pyopenvba
 
-    # A signature lives in the streams beside a vbaProject.bin, which an Access
-    # database does not have, so its save takes no such flag and passing one is a
-    # TypeError rather than a refusal.
+    # A signature lives beside a vbaProject.bin, which an Access database does not
+    # have, so its save takes no such flag and passing one is a TypeError rather
+    # than a refusal.
     options: dict[str, Any] = {"allow_protected": allow_protected}
     if info.host != "access":
         options["allow_invalidate_signature"] = allow_invalidate_signature
+        # pyOpenVBA drops a stale signature and warns, which is how Office saves
+        # changed code too. Warning after the fact is not asking first, so the
+        # refusal is made here, before anything is written.
+        if not allow_invalidate_signature and _signature_present(handle, info):
+            raise ToolError(
+                f"The VBA project is digitally signed, and saving changed code drops the "
+                f"signature: {info.title} signs the code, and this is no longer the code it "
+                "signed. Nothing was written. Ask the user, then call again with "
+                "allow_invalidate_signature=true. They can sign it again in the VBA editor."
+            )
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -462,13 +473,22 @@ def _components(handle: Any) -> Iterator[Any]:
 def _signature_present(handle: Any, info: HostInfo) -> bool | None:
     """Whether the project carries a digital signature, or None if not detectable.
 
-    Access keeps its VBA in the database rather than a vbaProject.bin, so the
-    signature streams this reads are not where its signature would live. None is
-    the honest answer there, not False.
+    Office keeps the signature of a .xlsm, .docm or .pptm in parts beside
+    vbaProject.bin rather than in its streams, and only `vba_signature` looks
+    there; reading the streams alone called every such file unsigned.
+
+    Access keeps its VBA in the database rather than a vbaProject.bin, so neither
+    place is where its signature would live. None is the honest answer there, not
+    False.
     """
     if info.host == "access":
         return None
+    import pyopenvba
+
     try:
+        signature = getattr(handle, "vba_signature", None)
+        if callable(signature):
+            return bool(signature().present)
         from pyopenvba.cfb import CFB
         from pyopenvba.vba import detect_signature
 
@@ -476,6 +496,8 @@ def _signature_present(handle: Any, info: HostInfo) -> bool | None:
         if not data:
             return False
         return bool(detect_signature(CFB(data)).present)
+    except pyopenvba.NoVBAProjectError:
+        return False
     except Exception:
         return None
 
