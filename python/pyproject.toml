@@ -52,9 +52,9 @@ dependencies = [
     "mcp>=2.0",
     # 6.1 is the first to open a file saved before its first macro, to give one
     # a project, to add and remove references, and to see a signature kept in the
-    # parts beside vbaProject.bin; 6.1.2 the first whose add_form references
-    # Microsoft Forms, without which a form's own event procedures do not compile.
-    "pyOpenVBA>=6.1.2,<7",
+    # parts beside vbaProject.bin; 6.1.2 made add_form reference Microsoft Forms.
+    # 6.1.3 removes a form's designer storage with its module, as Office does.
+    "pyOpenVBA>=6.1.3,<7",
     # Both upper bounds state what the conformance corpus has actually been run
     # against rather than what is expected to keep working. pyOfficeEditor is
     # pre-1.0, where a minor may move the API; pyOpenVBA 6 changed enough from 5

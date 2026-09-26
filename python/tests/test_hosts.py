@@ -236,19 +236,46 @@ def test_the_access_catalog_refuses_the_others(
 
 
 def test_an_orphaned_design_is_reported_rather_than_counted(
+    call: Callable[..., Any], workbook: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An orphaned designer storage is reported as such. pyOpenVBA 6.1.3
+    deletes the storage with the module, so a fake damaged project is used to
+    exercise the state that an old or repaired file can still contain."""
+    from contextlib import nullcontext
+
+    from xlide_mcp import project as project_layer
+
+    class Orphan:
+        name = "Wizard"
+
+        def walk(self) -> list[Any]:
+            return []
+
+    class Project:
+        def __init__(self) -> None:
+            self.modules: list[Any] = []
+
+    class DamagedFile:
+        def forms(self) -> list[Orphan]:
+            return [Orphan()]
+
+        def vba_project(self) -> Project:
+            return Project()
+
+    monkeypatch.setattr(project_layer, "open_project", lambda *_args: nullcontext(DamagedFile()))
+    listed = call("xlide_list_forms", file_path=str(workbook))
+    orphans = [entry["name"] for entry in listed["forms"] if entry.get("orphaned")]
+    assert orphans == ["Wizard"]
+    assert "does not show it" in listed["note"]
+
+
+def test_deleting_a_form_module_also_removes_its_design(
     call: Callable[..., Any], workspace: Path
 ) -> None:
-    """A designer storage with no module is what deleting a form's module on its
-    own leaves behind. The editor does not show it, so counting it as an ordinary
-    form reports a form the user cannot open.
-
-    Built by deleting the module through pyOpenVBA directly, which still leaves
-    the storage, rather than through this server, which refuses to. Until 6.1
-    PowerPoint's template shipped in exactly this state and served as the
-    fixture; the template was remade from a clean presentation."""
+    """pyOpenVBA 6.1.3 follows Office: deleting the module takes its design."""
     import pyopenvba
 
-    path = workspace / "Orphan.xlsm"
+    path = workspace / "RemovedForm.xlsm"
     with pyopenvba.ExcelFile.create_new(path) as book:
         book.add_form("Wizard", caption="Setup")
         book.save()
@@ -257,6 +284,5 @@ def test_an_orphaned_design_is_reported_rather_than_counted(
         book.save()
 
     listed = call("xlide_list_forms", file_path=str(path))
-    orphans = [entry["name"] for entry in listed["forms"] if entry.get("orphaned")]
-    assert orphans == ["Wizard"]
-    assert "does not show it" in listed["note"]
+    assert listed["count"] == 0
+    assert listed["forms"] == []
