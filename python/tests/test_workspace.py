@@ -164,3 +164,21 @@ def test_roots_can_be_positional_as_well_as_flagged(tmp_path: Path) -> None:
     roots = roots_from_argv(list(args.root or []) + list(args.roots or []))
 
     assert set(roots) == {first.resolve(), second.resolve()}
+
+
+@pytest.mark.parametrize("transport", ["streamable-http", "sse"])
+def test_http_options_are_passed_to_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, transport: str
+) -> None:
+    from xlide_mcp import __main__ as cli
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class Server:
+        def run(self, selected: str, **options: object) -> None:
+            calls.append((selected, options))
+
+    monkeypatch.setattr(cli, "build_server", lambda _settings: Server())
+    assert cli.main(["--root", str(tmp_path), "--transport", transport,
+                     "--host", "127.0.0.1", "--port", "8899"]) == 0
+    assert calls == [(transport, {"host": "127.0.0.1", "port": 8899})]

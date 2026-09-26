@@ -18,6 +18,9 @@ venv/
 coverage.xml
 htmlcov/
 .tox/
+.testdeps/
+.testtmp/
+.upstreams/
 
 # ------------------------------------------------- other implementations
 # One directory per language beside python/. These cover the usual build

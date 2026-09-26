@@ -13,7 +13,7 @@ import re
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from .. import project as project_layer
 from .. import xlide_vscode
@@ -23,14 +23,24 @@ from ..hosts import require_readable
 from ..paths import require_writable, resolve_path
 from ..tokens import check_content_token, content_token
 from ._common import (
-    bound,
+    ALLOW_PROTECTED_DESCRIPTION,
+    ALLOW_SIGNATURE_DESCRIPTION,
+    MAX_RESULT_CHARS,
     change_summary,
-    limited,
+    page,
     read_only,
     truncate,
     unified_diff,
     writes,
 )
+
+
+class ModuleEdit(BaseModel):
+    start_line: int = Field(ge=1, description="First original line to replace, 1-based.")
+    end_line: int = Field(
+        ge=0, description="Last original line, inclusive. Use start_line - 1 to insert."
+    )
+    replacement: str = Field(description="Complete replacement text for these lines.")
 
 _VALID_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,30}$")
 
@@ -68,21 +78,26 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Lists the VBA modules in an Office file: name, kind (standard, class, document "
             "or userform), line count, and a content_token to pass to a guarded write. "
             "xlide_project_info returns this and more in one call; use this one when the file "
-            "is already known and only the module list is wanted."
+            "is already known and only the module list is wanted. Use offset and next_offset "
+            "to read large projects in pages."
         ),
     )
     def list_modules(
         file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many modules before a page.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="Return at most this many modules.")
+        ] = 300,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
             modules = project_layer.read_modules(handle, info)
             has_project = project_layer.has_project(handle, info)
-        shown, note = bound(
-            [m.summary() for m in modules],
-            "modules",
-            "Use xlide_search_modules to find the one you want.",
+        shown, next_offset = page(
+            [m.summary() for m in modules], "modules", offset, max_results
         )
         result: dict[str, Any] = {
             "path": str(path),
@@ -90,9 +105,14 @@ def register(server: MCPServer, settings: Settings) -> None:
             "has_vba_project": has_project,
             "count": len(modules),
             "modules": shown,
+            "offset": offset,
+            "next_offset": next_offset,
         }
-        if note:
-            result["note"] = note
+        if next_offset is not None:
+            result["note"] = (
+                f"{len(modules)} modules in all; call again with offset={next_offset} "
+                "for the next page."
+            )
         if not has_project:
             result["note"] = project_layer.no_project_note(path, info)
         return result
@@ -106,7 +126,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "it, with the attribute header stripped, plus a content_token. Pass that token "
             "back as expected_content_token when you write, and the write is refused if "
             "anything changed the module in between. start_line and end_line read a slice of "
-            "a long module; both are 1-based and inclusive."
+            "a long module; both are 1-based and inclusive. line_ranges reads several "
+            "slices in one call, with each pair [first, last] using body line numbers."
         ),
     )
     def read_module(
@@ -118,6 +139,13 @@ def register(server: MCPServer, settings: Settings) -> None:
         end_line: Annotated[
             int, Field(default=0, ge=0, description="Last line to return. 0 means the end.")
         ] = 0,
+        line_ranges: Annotated[
+            list[list[int]] | None,
+            Field(
+                default=None,
+                description="Optional list of [first, last] inclusive 1-based line ranges.",
+            ),
+        ] = None,
         include_header: Annotated[
             bool,
             Field(
@@ -137,13 +165,56 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         source = module.full_source if include_header else module.body
         lines = source.splitlines()
+        if end_line and end_line < (start_line or 1):
+            raise ToolError(
+                f"end_line {end_line} is before start_line {start_line or 1}. "
+                "Use an end line at or after the start line."
+            )
+        if line_ranges is not None:
+            if start_line or end_line:
+                raise ToolError("Use line_ranges or start_line/end_line, not both.")
+            if include_header:
+                raise ToolError("line_ranges uses body line numbers; set include_header=false.")
+            if not line_ranges or len(line_ranges) > 20:
+                raise ToolError("line_ranges needs 1 to 20 [first, last] pairs.")
+            sections: list[dict[str, Any]] = []
+            budget = max(1, MAX_RESULT_CHARS // len(line_ranges))
+            for pair in line_ranges:
+                if len(pair) != 2 or pair[0] < 1 or pair[1] < pair[0] or pair[1] > len(lines):
+                    raise ToolError(
+                        f"Invalid line range {pair!r}; {module.name} has {len(lines)} lines."
+                    )
+                part, cut = truncate(
+                    "\n".join(lines[pair[0] - 1 : pair[1]]), budget,
+                    hint="Read a narrower line range.",
+                )
+                sections.append({"first_line": pair[0], "last_line": pair[1],
+                                 "source": part, "truncated": cut})
+            return {
+                "path": str(path), "module": module.name, "kind": module.kind,
+                "content_token": module.token, "total_lines": len(lines),
+                "sections": sections,
+                "note": "The token describes the whole module; an edit can name these lines.",
+            }
+        if not lines:
+            if start_line or end_line:
+                raise ToolError(f"{module.name} has no body lines to read.")
+            return {
+                "path": str(path), "module": module.name, "kind": module.kind,
+                "content_token": module.token, "total_lines": 0,
+                "first_line": 0, "last_line": 0, "truncated": False, "source": "",
+            }
         first = max(1, start_line or 1)
         last = min(len(lines), end_line or len(lines))
         if first > len(lines):
             raise ToolError(
                 f"{module.name} has {len(lines)} lines; start_line {start_line} is past the end."
             )
-        sliced = "\n".join(lines[first - 1 : last])
+        sliced = (
+            source.replace("\r\n", "\n")
+            if first == 1 and last == len(lines)
+            else "\n".join(lines[first - 1 : last])
+        )
         text, was_cut = truncate(sliced, hint="Read it in slices with start_line and end_line.")
         result: dict[str, Any] = {
             "path": str(path),
@@ -158,8 +229,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         }
         if first != 1 or last != len(lines):
             result["note"] = (
-                "This is a slice. The content_token describes the whole module, so a write "
-                "using it must send the whole module."
+                "This is a slice. The content_token describes the whole module. Use "
+                "xlide_edit_module to change these lines, or send the whole module to "
+                "xlide_write_module."
             )
         return result
 
@@ -169,23 +241,37 @@ def register(server: MCPServer, settings: Settings) -> None:
         annotations=read_only("List procedures"),
         description=(
             "Lists the Sub, Function and Property procedures in one module, with each one's "
-            "kind, scope, line number and signature. Use it to find where to change something "
-            "without reading a long module in full."
+            "kind, scope, line number and signature. The module's content_token can guard "
+            "an xlide_edit_module call. Use it to find where to change something without "
+            "reading a long module in full. Use offset and next_offset to page through a "
+            "module with many procedures."
         ),
     )
     def list_procedures(
         file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
         module_name: Annotated[str, Field(description="Module name, matched without case.")],
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Procedures to skip.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=1000, description="Most procedures to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
             module = project_layer.find_module_in(handle, info, path, module_name)
+        procedures = _procedures(module.body)
+        shown, next_offset = page(procedures, "procedures", offset, max_results)
         return {
             "path": str(path),
             "module": module.name,
             "kind": module.kind,
-            "procedures": _procedures(module.body),
+            "content_token": module.token,
+            "count": len(procedures),
+            "offset": offset,
+            "next_offset": next_offset,
+            "procedures": shown,
         }
 
     @server.tool(
@@ -195,8 +281,10 @@ def register(server: MCPServer, settings: Settings) -> None:
         description=(
             "Searches every module's source in an Office file and returns each match with its "
             "module, line number and the line itself. Use it to find where a name is declared "
-            "or used before changing it. Plain text by default; set is_regex for a Python "
-            "regular expression."
+            "or used before changing it. content_tokens maps returned module names to tokens "
+            "for guarded xlide_edit_module calls without a separate read. Use offset and "
+            "next_offset to page through broad searches; total_match_count counts all matches. "
+            "Plain text by default; set is_regex for a Python regular expression."
         ),
     )
     def search_modules(
@@ -213,8 +301,12 @@ def register(server: MCPServer, settings: Settings) -> None:
             ),
         ] = False,
         max_results: Annotated[
-            int, Field(default=200, ge=1, le=2000, description="Stop after this many matches.")
+            int, Field(default=200, ge=1, le=2000, description="Return at most this many matches.")
         ] = 200,
+        offset: Annotated[
+            int,
+            Field(default=0, ge=0, description="Skip this many matches before a page."),
+        ] = 0,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
@@ -231,25 +323,30 @@ def register(server: MCPServer, settings: Settings) -> None:
             has_project = project_layer.has_project(handle, info)
 
         matches: list[dict[str, Any]] = []
-        truncated = False
+        content_tokens: dict[str, str] = {}
+        total_match_count = 0
         for module in modules:
             for number, line in enumerate(module.body.splitlines(), start=1):
                 if not pattern.search(line):
                     continue
-                if len(matches) >= max_results:
-                    truncated = True
-                    break
-                matches.append(
-                    {"module": module.name, "line": number, "text": line.strip()[:300]}
-                )
-            if truncated:
-                break
+                if offset <= total_match_count < offset + max_results:
+                    matches.append(
+                        {"module": module.name, "line": number, "text": line.strip()[:300]}
+                    )
+                    content_tokens[module.name] = module.token
+                total_match_count += 1
+        next_offset = offset + len(matches)
+        has_more = next_offset < total_match_count
         result: dict[str, Any] = {
             "path": str(path),
             "query": query,
             "match_count": len(matches),
-            "truncated": truncated,
+            "total_match_count": total_match_count,
+            "offset": offset,
+            "next_offset": next_offset if has_more else None,
+            "truncated": has_more,
             "matches": matches,
+            "content_tokens": content_tokens,
         }
         if not has_project:
             result["note"] = project_layer.no_project_note(path, info)
@@ -267,8 +364,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             "expected_content_token from your read and the write is refused if the module "
             "changed since. The result carries a diff of what the file now holds, read back "
             "after saving, which is what to show the user when they ask what changed. After "
-            "writing, call xlide_analyze and treat any error as a build failure. Ask the user "
-            "first when the project is protected or signed."
+            "writing, call xlide_analyze and treat any error as a build failure. Identical "
+            "source is reported without saving. Ask the user first when the project is "
+            "protected or signed."
         ),
     )
     def write_module(
@@ -351,6 +449,17 @@ def register(server: MCPServer, settings: Settings) -> None:
                 stale = check_content_token(existing.body, expected_content_token, existing.name)
                 if stale is not None:
                     raise ToolError(stale.message)
+                if content_token(source) == existing.token:
+                    unchanged: dict[str, Any] = {
+                        "path": str(path), "module": existing.name, "kind": existing.kind,
+                        "created": False, "changed": False, "saved": False,
+                        "content_token": existing.token,
+                        **change_summary(existing.body, existing.body),
+                        "note": "The module already has this source. Nothing was written.",
+                    }
+                    if include_diff:
+                        unchanged["diff"] = "(no change)"
+                    return unchanged
                 created = False
                 before = existing.body
 
@@ -388,6 +497,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             "module": after.name,
             "kind": after.kind,
             "created": created,
+            "changed": True,
             "content_token": after.token,
             "saved": True,
             **change_summary(before, after.body),
@@ -430,6 +540,82 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
     @server.tool(
+        name="xlide_edit_module",
+        title="Edit module lines",
+        annotations=writes("Edit module lines", destructive=True),
+        description=(
+            "Replaces, inserts or deletes several line ranges in one existing VBA module and "
+            "saves once. Lines are 1-based against the original source returned by "
+            "xlide_read_module, without the attribute header. Each edit has start_line, "
+            "end_line inclusive, and replacement text. For insertion, set end_line to "
+            "start_line - 1; an empty replacement deletes the named lines. Ranges must not "
+            "overlap. expected_content_token is required and refuses a stale edit. Set "
+            "preview_only to validate the edits and see the proposed diff without saving. "
+            "An applied edit includes the read-back diff and new token. Analyze the file afterward."
+        ),
+    )
+    def edit_module(
+        file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
+        module_name: Annotated[str, Field(description="Existing module to edit.")],
+        edits: Annotated[
+            list[ModuleEdit],
+            Field(description="Line edits against the original module body, applied together."),
+        ],
+        expected_content_token: Annotated[
+            str, Field(description="Content token from the last read; required.")
+        ],
+        preview_only: Annotated[
+            bool, Field(default=False, description="Show the proposed diff without saving.")
+        ] = False,
+        allow_protected: Annotated[
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
+        ] = False,
+        allow_invalidate_signature: Annotated[
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
+        ] = False,
+    ) -> dict[str, Any]:
+        if not preview_only:
+            require_writable(settings, "xlide_edit_module")
+        if not expected_content_token:
+            raise ToolError("expected_content_token is required. Read the module first.")
+        path = resolve_path(file_path, settings)
+        info = require_readable(path)
+        with project_layer.open_project(path, info) as handle:
+            module = project_layer.find_module_in(handle, info, path, module_name)
+        stale = check_content_token(module.body, expected_content_token, module.name)
+        if stale is not None:
+            raise ToolError(stale.message)
+        source = _apply_line_edits(module.body, edits)
+        if preview_only:
+            diff, truncated = unified_diff(
+                module.body, source, label=module.name,
+                narrower="Read or edit a narrower line range to see the rest.",
+            )
+            preview: dict[str, Any] = {
+                "path": str(path), "module": module.name, "kind": module.kind,
+                "applied": False, "saved": False, "edits_applied": len(edits),
+                "content_token": module.token,
+                **change_summary(module.body, source),
+                "diff": diff,
+                "next_step": (
+                    "To apply these edits, call xlide_edit_module again with "
+                    "preview_only=false and the same expected_content_token."
+                ),
+            }
+            if truncated:
+                preview["diff_truncated"] = True
+            return preview
+        result = write_module(
+            file_path, module.name, source,
+            expected_content_token=expected_content_token,
+            allow_protected=allow_protected,
+            allow_invalidate_signature=allow_invalidate_signature,
+        )
+        result["applied"] = result["saved"]
+        result["edits_applied"] = len(edits)
+        return result
+
+    @server.tool(
         name="xlide_rename_module",
         title="Rename module",
         annotations=writes("Rename module", destructive=True),
@@ -445,10 +631,10 @@ def register(server: MCPServer, settings: Settings) -> None:
         module_name: Annotated[str, Field(description="Module to rename.")],
         new_name: Annotated[str, Field(description="New name. A valid VBA identifier.")],
         allow_protected: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
         ] = False,
         allow_invalidate_signature: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
         ] = False,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_rename_module")
@@ -509,7 +695,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         description=(
             "Permanently deletes a VBA module from an Office file and saves it. There is no "
             "undo: ask the user first, and read the module before deleting it so its code can "
-            "be put back if they change their mind. Document modules cannot be deleted."
+            "be put back if they change their mind. Document modules cannot be deleted. "
+            "For Excel, the write is refused if the server cannot check whether a shape "
+            "still calls the module."
         ),
     )
     def delete_module(
@@ -526,10 +714,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             ),
         ] = "",
         allow_protected: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
         ] = False,
         allow_invalidate_signature: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
         ] = False,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_delete_module")
@@ -588,6 +776,37 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
 
+def _apply_line_edits(source: str, edits: list[ModuleEdit]) -> str:
+    if not edits or len(edits) > 100:
+        raise ToolError("edits needs 1 to 100 line edits.")
+    lines = source.splitlines(keepends=True)
+    ordered = sorted(edits, key=lambda edit: (edit.start_line, edit.end_line))
+    previous: ModuleEdit | None = None
+    for edit in ordered:
+        if edit.end_line < edit.start_line - 1 or edit.start_line > len(lines) + 1:
+            raise ToolError(
+                f"Invalid edit {edit.start_line}:{edit.end_line}; the module has "
+                f"{len(lines)} lines."
+            )
+        if edit.end_line > len(lines):
+            raise ToolError(
+                f"Invalid edit {edit.start_line}:{edit.end_line}; the module has "
+                f"{len(lines)} lines."
+            )
+        if previous is not None and (
+            edit.start_line <= previous.end_line or edit.start_line == previous.start_line
+        ):
+            raise ToolError("Line edits overlap; give each original line one edit.")
+        previous = edit
+    newline = "\r\n" if "\r\n" in source else "\n"
+    for edit in reversed(ordered):
+        replacement = edit.replacement
+        if replacement and not replacement.endswith(("\r", "\n")) and edit.end_line < len(lines):
+            replacement += newline
+        lines[edit.start_line - 1 : edit.end_line] = [replacement] if replacement else []
+    return "".join(lines)
+
+
 def _shapes_calling(path: Any, info: Any, module_name: str) -> list[dict[str, Any]]:
     """Shapes whose OnAction names this module.
 
@@ -602,8 +821,12 @@ def _shapes_calling(path: Any, info: Any, module_name: str) -> list[dict[str, An
         from ..shapes import read_sheet_shapes
 
         by_sheet = read_sheet_shapes(path)
-    except Exception:
-        return []
+    except Exception as exc:
+        raise ToolError(
+            f"Could not check which shapes call {module_name!r}: {exc}. Nothing was deleted. "
+            "Inspect the drawing layer with xlide_list_shapes or Excel, fix the read error, "
+            "then retry the deletion."
+        ) from exc
     wanted = module_name.casefold()
     found: list[dict[str, Any]] = []
     for sheet, shapes in by_sheet.items():
@@ -694,10 +917,7 @@ def _procedures(source: str) -> list[dict[str, Any]]:
                 "signature": f"{kind} {match.group('name')}{signature}".strip(),
             }
         )
-    shown, total = limited(found, 1000)
-    if total > len(shown):
-        shown.append({"note": f"{total - len(shown)} more procedures not listed."})
-    return shown
+    return found
 
 
 __all__ = ["content_token", "register"]

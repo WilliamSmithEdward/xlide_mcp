@@ -25,7 +25,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import require_writable, resolve_directory, resolve_path
-from ._common import writes
+from ._common import ALLOW_PROTECTED_DESCRIPTION, ALLOW_SIGNATURE_DESCRIPTION, writes
 
 # A standard module exports as .bas; everything else - classes, document modules
 # and the code behind a form - exports as .cls, which is what the VBE writes.
@@ -42,8 +42,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Writes every VBA module in an Office file to a folder as .bas and .cls files, for "
             "source control or review. Previews by default: it reports what it would create, "
             "update and leave alone, and writes nothing until apply=true. Only when the user "
-            "asks for it. The exported files are copies: editing one changes nothing inside "
-            "the Office file until xlide_import_modules runs."
+            "asks for it. Applying a plan leaves unchanged files alone. The exported files "
+            "are copies: editing one changes nothing inside the Office file until "
+            "xlide_import_modules runs."
         ),
     )
     def export_modules(
@@ -78,7 +79,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         folder = (
             resolve_directory(export_folder, settings, must_exist=False)
             if export_folder.strip()
-            else path.with_name(path.stem + "_vba")
+            else resolve_directory(
+                str(path.with_name(path.stem + "_vba")), settings, must_exist=False
+            )
         )
 
         with project_layer.open_project(path, info) as handle:
@@ -89,8 +92,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         for module in modules:
             suffix = _STANDARD_SUFFIX if module.kind == "standard" else _OTHER_SUFFIX
             target = folder / f"{module.name}{suffix}"
+            checked = resolve_path(str(target), settings, must_exist=False)
             expected.add(target.name.casefold())
-            current = _read_text(target)
+            current = _read_text(checked)
             if current is None:
                 plan.append({"file": target.name, "action": "create", "lines": module.line_count})
             elif _same_text(current, module.full_source):
@@ -127,11 +131,17 @@ def register(server: MCPServer, settings: Settings) -> None:
             }
 
         require_writable(settings, "xlide_export_modules")
-        folder.mkdir(parents=True, exist_ok=True)
+        actions = {entry["file"].casefold(): entry["action"] for entry in plan}
+        if any(action in {"create", "update"} for action in actions.values()):
+            folder.mkdir(parents=True, exist_ok=True)
         written = 0
         for module in modules:
             suffix = _STANDARD_SUFFIX if module.kind == "standard" else _OTHER_SUFFIX
-            target = folder / f"{module.name}{suffix}"
+            if actions[f"{module.name}{suffix}".casefold()] == "unchanged":
+                continue
+            target = resolve_path(
+                str(folder / f"{module.name}{suffix}"), settings, must_exist=False
+            )
             target.write_text(module.full_source, encoding="utf-8", newline="")
             written += 1
         deleted = 0
@@ -144,6 +154,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             "export_folder": str(folder),
             "applied": True,
             "files_written": written,
+            "files_unchanged": sum(
+                entry["action"] == "unchanged" for entry in plan
+            ),
             "files_deleted": deleted,
             "plan": plan,
             "note": (
@@ -161,7 +174,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "and saves it. Previews by default: it reports which modules would change and by "
             "how much, and writes nothing until apply=true. A file whose name matches no "
             "module creates one. Document modules such as ThisWorkbook are written but never "
-            "created. After applying, call xlide_analyze."
+            "created. Applying an unchanged plan skips the save. After a change, call "
+            "xlide_analyze."
         ),
     )
     def import_modules(
@@ -172,10 +186,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             Field(default=False, description="Write the modules. False previews the plan."),
         ] = False,
         allow_protected: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
         ] = False,
         allow_invalidate_signature: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
         ] = False,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
@@ -190,7 +204,8 @@ def register(server: MCPServer, settings: Settings) -> None:
                 _OTHER_SUFFIX,
             }:
                 continue
-            text = _read_text(item)
+            checked = resolve_path(str(item), settings)
+            text = _read_text(checked)
             if text is None:
                 continue
             incoming[item.stem.casefold()] = (item, text)
@@ -243,6 +258,13 @@ def register(server: MCPServer, settings: Settings) -> None:
                 }
 
             require_writable(settings, "xlide_import_modules")
+            if not changing:
+                return {
+                    "path": str(path), "source_folder": str(folder),
+                    "applied": True, "modules_changed": 0, "plan": plan,
+                    "saved": False,
+                    "note": "Every imported module is already unchanged. Nothing was written.",
+                }
             import pyopenvba
 
             for action, name, item, text in changing:

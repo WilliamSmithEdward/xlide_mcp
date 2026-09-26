@@ -66,6 +66,31 @@ def test_a_proxy_in_the_environment_is_never_used(
     assert answered["response"] == {"routes": ["agent"]}
 
 
+def test_live_module_can_be_read_in_slices_with_one_token(
+    call: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from xlide_mcp.tools import live
+
+    class Session:
+        def describe(self) -> dict[str, Any]:
+            return {"pid": 4242, "host": "EXCEL"}
+
+    source = "Option Explicit\r\nPublic Sub Go()\r\n    Debug.Print 1\r\nEnd Sub\r\n"
+    monkeypatch.setattr(live, "_pick", lambda _pid: Session())
+    monkeypatch.setattr(live, "_request", lambda *_args: {"text": source})
+    full = call("xlide_live_read_module", module_name="Tools")
+    sliced = call(
+        "xlide_live_read_module", module_name="Tools", start_line=2, end_line=3,
+    )
+    assert full["source"].endswith("\n")
+    assert full["total_lines"] == 4
+    assert sliced["source"] == "Public Sub Go()\n    Debug.Print 1"
+    assert sliced["content_token"] == full["content_token"]
+    with pytest.raises(ToolFailure) as refusal:
+        call("xlide_live_read_module", module_name="Tools", start_line=3, end_line=2)
+    assert "before start_line" in refusal.value.message
+
+
 def test_a_stranger_on_a_stale_port_is_a_session_that_closed(
     call: Callable[..., Any], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

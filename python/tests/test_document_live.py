@@ -22,6 +22,12 @@ pytestmark = [
     pytest.mark.skipif(sys.platform != "win32", reason="needs Windows with Excel installed"),
 ]
 
+
+def _excel_session() -> Any:
+    from pyvbaharness import ExcelSession, HarnessConfig
+
+    return ExcelSession(HarnessConfig(lock_wait_s=60.0))
+
 SALES = [
     ["Region", "Amount"],
     ["West", 120],
@@ -62,9 +68,7 @@ def test_excel_sees_the_filter_note_chart_and_runs_this_server_wrote(
     )
     call("xlide_add_chart", data_range="A1:B6", chart_type="column", cell="F2", **sheet)
 
-    from pyvbaharness import ExcelSession
-
-    with ExcelSession() as excel:
+    with _excel_session() as excel:
         excel.open_document(path, read_only=True)
         result = excel.run_vba(READ_BACK, proc="ReadBack", timeout=240)
 
@@ -102,9 +106,7 @@ def test_a_pivot_table_and_a_chart_sheet_excel_made_are_listed(
     call: Callable[..., Any], workspace: Path
 ) -> None:
     target = workspace / "Report.xlsx"
-    from pyvbaharness import ExcelSession
-
-    with ExcelSession() as excel:
+    with _excel_session() as excel:
         result = excel.run_vba(
             BUILD_PIVOT_AND_CHART_SHEET, proc="Build", args=(str(target),), timeout=240
         )

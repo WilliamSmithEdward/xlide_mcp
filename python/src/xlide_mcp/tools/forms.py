@@ -16,7 +16,6 @@ Access, the unit Access keeps. The two are never mixed in one file.
 
 from __future__ import annotations
 
-import contextlib
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
@@ -28,7 +27,14 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import require_writable, resolve_path
-from ._common import bound, read_only, writes
+from ._common import (
+    ALLOW_PROTECTED_DESCRIPTION,
+    ALLOW_SIGNATURE_DESCRIPTION,
+    bound,
+    page,
+    read_only,
+    writes,
+)
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -40,11 +46,19 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Lists the UserForms in an Office file, or the forms and reports in an Access "
             "database, with each one's control count and, for Access, the sections a control "
             "can go in. A design's code is a module of the same name, read with "
-            "xlide_read_module."
+            "xlide_read_module. An unreadable report collection is a failure, not an empty "
+            "list. An unreadable design's sections are marked unknown with sections_error. "
+            "Use offset and next_offset to read large form lists in pages."
         ),
     )
     def list_forms(
         file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many forms before a page.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="Return at most this many forms.")
+        ] = 300,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
@@ -59,19 +73,31 @@ def register(server: MCPServer, settings: Settings) -> None:
                 }
                 if form.name.casefold() in orphans:
                     entry["orphaned"] = True
-                sections = _sections(form)
+                sections, sections_error = _sections(form)
                 if sections:
                     entry["sections"] = sections
+                if sections_error:
+                    entry["sections"] = None
+                    entry["sections_error"] = sections_error
                 listed.append(entry)
+        shown, next_offset = page(listed, "forms", offset, max_results)
         result: dict[str, Any] = {
             "path": str(path),
             "host": info.host,
             "geometry_unit": "twips" if info.host == "access" else "points",
             "count": len(listed),
-            "forms": listed,
+            "forms": shown,
+            "offset": offset,
+            "next_offset": next_offset,
         }
-        if any(entry.get("orphaned") for entry in listed):
+        if next_offset is not None:
             result["note"] = (
+                f"{len(listed)} forms in all; call again with offset={next_offset} "
+                "for the next page."
+            )
+        if any(entry.get("orphaned") for entry in shown):
+            prefix = result["note"] + " " if "note" in result else ""
+            result["note"] = prefix + (
                 "A form marked orphaned has a designer storage and no code module, so the "
                 f"{info.title} editor does not show it and its code cannot be written. The "
                 "bytes are still in the file. It is usually left by a tool that deleted or "
@@ -86,8 +112,11 @@ def register(server: MCPServer, settings: Settings) -> None:
         description=(
             "Reads one form's design: every control with its name, type, the container it sits "
             "in, and the properties the developer set. Properties left at their default are "
-            "not stored and so are not listed. Use it to understand a form's layout, or to see "
-            "which control an event procedure belongs to."
+            "not stored and so are not listed. A property read failure appears as "
+            "_read_error, not an empty property set; unreadable sections have sections_error. "
+            "Use offset and next_offset to read large "
+            "forms in pages. Use it to understand a form's layout, or to see which control "
+            "an event procedure belongs to."
         ),
     )
     def read_form(
@@ -100,6 +129,13 @@ def register(server: MCPServer, settings: Settings) -> None:
                 description="Include each control's set properties. Off gives just the tree.",
             ),
         ] = True,
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many controls before a page.")
+        ] = 0,
+        max_controls: Annotated[
+            int,
+            Field(default=300, ge=1, le=300, description="Return at most this many controls."),
+        ] = 300,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
@@ -107,14 +143,15 @@ def register(server: MCPServer, settings: Settings) -> None:
             form = _find_form(handle, form_name, info.title)
             form_display = form.name
             design_kind = _design_kind(form)
-            sections = _sections(form)
+            sections, sections_error = _sections(form)
             every_control = [_control(c, include_properties) for c in form.walk()]
             form_properties = _safe_properties(form) if include_properties else {}
-        controls, controls_note = bound(
-            every_control,
+        controls, _ = bound(
+            every_control[offset : offset + max_controls],
             "controls",
-            "Call again with include_properties false for the tree alone.",
         )
+        next_offset = offset + len(controls)
+        has_more = next_offset < len(every_control)
         result: dict[str, Any] = {
             "path": str(path),
             "form": form_display,
@@ -123,11 +160,20 @@ def register(server: MCPServer, settings: Settings) -> None:
             "properties": form_properties,
             "control_count": len(every_control),
             "controls": controls,
+            "offset": offset,
+            "next_offset": next_offset if has_more else None,
         }
-        if controls_note:
-            result["note"] = controls_note
+        if has_more:
+            result["note"] = (
+                f"{len(every_control)} controls in all; this page shows {len(controls)}. "
+                f"Call again with offset={next_offset} for the next page. "
+                "Set include_properties=false to fit more controls per page."
+            )
         if sections:
             result["sections"] = sections
+        if sections_error:
+            result["sections"] = None
+            result["sections_error"] = sections_error
         return result
 
     @server.tool(
@@ -167,10 +213,10 @@ def register(server: MCPServer, settings: Settings) -> None:
         ] = 0.0,
         height: Annotated[float, Field(default=0.0, description="For create.")] = 0.0,
         allow_protected: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
         ] = False,
         allow_invalidate_signature: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
         ] = False,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_manage_form")
@@ -292,10 +338,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             Field(default=None, description="For set_property. null clears it to the default."),
         ] = None,
         allow_protected: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
         ] = False,
         allow_invalidate_signature: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
         ] = False,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_edit_form")
@@ -491,18 +537,23 @@ def _forms(handle: Any, host_title: str) -> list[Any]:
     forms() alone reports a database's reports as not existing. They are the same
     kind of object, they are edited by the same calls, and `kind` tells them apart.
     """
+    forms = getattr(handle, "forms", None)
+    if not callable(forms):
+        raise ToolError(f"{host_title} files do not expose form designs here.")
     try:
-        designs = list(handle.forms())
-    except AttributeError as exc:
-        raise ToolError(f"{host_title} files do not expose form designs here.") from exc
+        designs = list(forms())
     except Exception as exc:
         raise ToolError(f"The form designs could not be read: {exc}") from exc
 
     reports = getattr(handle, "reports", None)
     if callable(reports):
-        # A database with no reports storage at all: the forms still list.
-        with contextlib.suppress(Exception):
+        try:
             designs.extend(reports())
+        except Exception as exc:
+            raise ToolError(
+                f"The reports could not be read: {exc}. The form and report list is "
+                "incomplete; inspect the database in Access."
+            ) from exc
     return designs
 
 
@@ -539,12 +590,12 @@ def _design_kind(design: Any) -> str:
     return str(getattr(design, "kind", "") or "form")
 
 
-def _sections(design: Any) -> list[str]:
-    """An Access design's bands. A UserForm has none."""
+def _sections(design: Any) -> tuple[list[str] | None, str | None]:
+    """An Access design's bands, or a reason they could not be read."""
     try:
-        return [section.name for section in getattr(design, "sections", []) or []]
-    except Exception:
-        return []
+        return [section.name for section in getattr(design, "sections", []) or []], None
+    except Exception as exc:
+        return None, f"The design sections could not be read: {exc}"
 
 
 def _control(control: Any, include_properties: bool) -> dict[str, Any]:
@@ -569,8 +620,8 @@ def _safe_properties(owner: Any) -> dict[str, Any]:
     """
     try:
         raw = owner.properties()
-    except Exception:
-        return {}
+    except Exception as exc:
+        return {"_read_error": f"The properties could not be read: {exc}"}
     out: dict[str, Any] = {}
     unnamed = 0
     for key, value in raw.items():

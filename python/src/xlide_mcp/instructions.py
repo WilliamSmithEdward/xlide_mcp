@@ -22,14 +22,17 @@ and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).
 A .vbp's modules are files on disk, so its writes land as they are made and it is \
 never protected or signed. Everything else works the same way.
 
-Reading and writing the file needs no Office installation and works on any platform. \
+Reading and writing VBA, UserForms, Power Query and cells in .xlsx, .xlsm and \
+.xlam needs no Office installation. Reading cells in .xlsb and .xls needs Windows \
+with Excel; writing cells in .xlsb does too. This server does not write .xls cells. \
 Running macros and tests needs Windows with the application installed.
 
 Workflow
 
 1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.
-2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and \
-says whether the project is password-protected or digitally signed.
+2. xlide_project_info once per file. It summarizes the parts this server can read \
+and says whether the VBA project is protected or signed. Check any forms_error, \
+power_query.error or sheets_note before treating a missing list as empty.
 3. xlide_read_module to read. Its result carries a content_token; pass that back as \
 expected_content_token to xlide_write_module and the write is refused if the module \
 changed after your read.

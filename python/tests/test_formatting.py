@@ -176,6 +176,39 @@ def test_cells_can_be_merged_and_split_again(
         assert list(cells.sheet_named(book, "Sheet1").merged_ranges) == []
 
 
+def test_merging_refuses_to_clear_values_and_formulas_without_opt_in(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    from xlide_mcp import cells
+
+    call(
+        "xlide_write_cells", file_path=str(workbook), sheet="Sheet1", start_cell="A1",
+        data=[["Keep", "=1+1", "Other"]],
+    )
+    before = workbook.read_bytes()
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_format_cells", file_path=str(workbook), sheet="Sheet1",
+            cell_range="A1:C1", merge="merge", bold=True,
+        )
+    assert "clear 2 cells" in refusal.value.message
+    assert "including 1 formula" in refusal.value.message
+    assert "allow_overwrite=true" in refusal.value.message
+    assert workbook.read_bytes() == before
+
+    merged = call(
+        "xlide_format_cells", file_path=str(workbook), sheet="Sheet1",
+        cell_range="A1:C1", merge="merge", allow_overwrite=True,
+    )
+    assert merged["cells_cleared"] == 2
+    assert merged["formulas_cleared"] == 1
+    with cells.open_workbook(workbook) as book:
+        sheet = cells.sheet_named(book, "Sheet1")
+        assert sheet["A1"].value == "Keep"
+        assert sheet["B1"].formula is None
+        assert sheet["C1"].value is None
+
+
 def test_an_unknown_sheet_names_the_ones_that_exist(
     call: Callable[..., Any], workbook: Path
 ) -> None:

@@ -14,6 +14,7 @@ outcome than not offering it.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -25,7 +26,8 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
-from ._common import bound, change_summary, read_only, truncate, unified_diff, writes
+from ..tokens import content_token
+from ._common import change_summary, page, read_only, truncate, unified_diff, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -35,13 +37,21 @@ def register(server: MCPServer, settings: Settings) -> None:
         annotations=read_only("List Power Query"),
         description=(
             "Lists the Power Query queries in an Excel workbook: name, group, description, "
-            "where each loads, and its applied step names. Queries live outside the VBA "
-            "project, so a plain .xlsx has them too. Call this when asked what a workbook "
-            "does; a workbook with no macros can still be doing most of its work here."
+            "where each loads, and its applied step names. If the M formula cannot be parsed, "
+            "steps is null with steps_error rather than an empty list. Queries live outside "
+            "the VBA project, so a plain .xlsx has them too. Call this when asked what a workbook "
+            "does; a workbook with no macros can still be doing most of its work here. "
+            "Use offset and next_offset to read large query lists in pages."
         ),
     )
     def list_queries(
         file_path: Annotated[str, Field(description="Absolute path to the Excel workbook.")],
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many queries before a page.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="Return at most this many queries.")
+        ] = 300,
     ) -> dict[str, Any]:
         path = _query_path(file_path, settings)
         with _open(path) as book:
@@ -51,21 +61,26 @@ def register(server: MCPServer, settings: Settings) -> None:
                     "group": _group_name(query),
                     "description": query.description or "",
                     "load_target": str(query.load_target or ""),
-                    "steps": _steps(query),
+                    **_steps(query),
                     "is_function": bool(query.is_function),
                 }
                 for query in book.queries()
             ]
             groups = [group.name for group in book.groups()]
-        shown, note = bound(queries, "queries", "Read one with xlide_read_query.")
+        shown, next_offset = page(queries, "queries", offset, max_results)
         result: dict[str, Any] = {
             "path": str(path),
             "count": len(queries),
             "queries": shown,
             "groups": groups,
+            "offset": offset,
+            "next_offset": next_offset,
         }
-        if note:
-            result["note"] = note
+        if next_offset is not None:
+            result["note"] = (
+                f"{len(queries)} queries in all; call again with offset={next_offset} "
+                "for the next page."
+            )
         return result
 
     @server.tool(
@@ -74,30 +89,70 @@ def register(server: MCPServer, settings: Settings) -> None:
         annotations=read_only("Read Power Query"),
         description=(
             "Reads one query's M formula, with its description, group, load target and refresh "
-            "settings. The formula is the whole let ... in expression as the Advanced Editor "
-            "shows it."
+            "settings. The formula is the let ... in expression as the Advanced Editor "
+            "shows it. start_line and end_line read a slice of a long formula; the "
+            "content_token always describes the whole query. If applied steps cannot be read, "
+            "steps is null and steps_error gives the reason; the M formula remains available."
         ),
     )
     def read_query(
         file_path: Annotated[str, Field(description="Absolute path to the Excel workbook.")],
         query_name: Annotated[str, Field(description="Query name, matched without case.")],
+        start_line: Annotated[
+            int, Field(default=0, ge=0, description="First formula line. 0 means the start.")
+        ] = 0,
+        end_line: Annotated[
+            int, Field(default=0, ge=0, description="Last formula line. 0 means the end.")
+        ] = 0,
     ) -> dict[str, Any]:
         path = _query_path(file_path, settings)
         import pyopenvba
 
         with _open(path) as book:
             query = _find_query(book, query_name)
-            formula, was_cut = truncate(query.formula or "")
+            full_formula = query.formula or ""
+            lines = full_formula.splitlines()
+            first = start_line or 1
+            last = min(len(lines), end_line or len(lines))
+            if end_line and end_line < first:
+                raise ToolError(
+                    f"end_line {end_line} is before start_line {first}. "
+                    "Use an end line at or after the start line."
+                )
+            if lines and first > len(lines):
+                raise ToolError(
+                    f"{query.name} has {len(lines)} formula lines; "
+                    f"start_line {start_line} is past the end."
+                )
+            if not lines and (start_line or end_line):
+                raise ToolError(f"{query.name} has no formula lines to read.")
+            sliced = (
+                full_formula.replace("\r\n", "\n")
+                if first == 1 and last == len(lines)
+                else "\n".join(lines[first - 1 : last])
+            )
+            formula, was_cut = truncate(
+                sliced, hint="Read a narrower range with start_line and end_line."
+            )
             result: dict[str, Any] = {
                 "path": str(path),
                 "query": query.name,
                 "group": _group_name(query),
                 "description": getattr(query, "description", "") or "",
                 "load_target": str(getattr(query, "load_target", "") or ""),
-                "steps": _steps(query),
+                **_steps(query),
+                "content_token": _query_token(query),
+                "total_lines": len(lines),
+                "first_line": first if lines else 0,
+                "last_line": last,
                 "truncated": was_cut,
                 "formula": formula,
             }
+            if lines and (first != 1 or last != len(lines)):
+                result["note"] = (
+                    "This is a slice. The content_token describes the whole query; "
+                    "send the whole formula when using xlide_write_query."
+                )
             # `refresh` is a property that raises for a query loading nowhere,
             # so getattr with a default does not shield the call: a query with no
             # sheet behind it has no connection, and therefore no refresh settings.
@@ -133,7 +188,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "names, because writing the connection means naming the columns and knowing them "
             "means running the query, which nothing here does; Excel settles them against the "
             "real result on the first refresh. A query already loaded keeps its rows until "
-            "Excel refreshes it."
+            "Excel refreshes it. Pass expected_content_token from xlide_read_query to "
+            "refuse a change if that query changed meanwhile."
         ),
     )
     def write_query(
@@ -190,6 +246,10 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = True,
+        expected_content_token: Annotated[
+            str,
+            Field(default="", description="Optional read token to guard the change."),
+        ] = "",
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_write_query")
         path = _query_path(file_path, settings)
@@ -203,6 +263,20 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         with _open(path) as book:
             existing = {name.casefold() for name in book.query_names()}
+            if expected_content_token:
+                if query_name.strip().casefold() not in existing:
+                    raise ToolError(
+                        f"No query named {query_name!r} remains. Read the query list and "
+                        "decide whether to create it or use its current name."
+                    )
+                current = _find_query(book, query_name)
+                actual = _query_token(current)
+                if expected_content_token != actual:
+                    raise ToolError(
+                        f"Query {current.name!r} changed since it was read, so the write "
+                        "was refused. Read it again and retry with its current "
+                        f"content_token ({actual})."
+                    )
             detail: dict[str, Any] = {}
             try:
                 if wanted == "set":
@@ -272,10 +346,18 @@ def register(server: MCPServer, settings: Settings) -> None:
                 raise ToolError(locks.lock_message(path, "Excel")) from exc
         xlide_vscode.file_changed(path, "queries", tool="xlide_write_query")
 
+        if wanted == "remove":
+            next_token = None
+        else:
+            current_name = new_name.strip() if wanted == "rename" else query_name
+            with _open(path) as book:
+                next_token = _query_token(_find_query(book, current_name))
+
         return {
             "path": str(path),
             "action": wanted,
             "saved": True,
+            "content_token": next_token,
             **detail,
             "note": (
                 "The query definition is stored. Its loaded rows, if it loads to a sheet, "
@@ -325,12 +407,29 @@ def _find_query(book: Any, name: str) -> Any:
     raise ToolError(f"No query named {name!r}. Queries in this workbook: {listed}.")
 
 
-def _steps(query: Any) -> list[str]:
-    """A query's applied step names. A formula this cannot parse yields none."""
+def _query_token(query: Any) -> str:
+    """Token for the query state exposed here, not just its M formula."""
+    state = {
+        "name": query.name,
+        "formula": query.formula or "",
+        "description": getattr(query, "description", "") or "",
+        "group": _group_name(query),
+        "load_target": str(getattr(query, "load_target", "") or ""),
+    }
+    return content_token(json.dumps(state, sort_keys=True, ensure_ascii=False))
+
+
+def _steps(query: Any) -> dict[str, Any]:
+    """A query's applied steps, or a reason they could not be read."""
     try:
-        return list(query.steps or [])
-    except Exception:
-        return []
+        return {"steps": list(query.steps or [])}
+    except Exception as exc:
+        return {
+            "steps": None,
+            "steps_error": (
+                f"Applied step names could not be read: {exc}. Read the M formula directly."
+            ),
+        }
 
 
 def _group_name(query: Any) -> str:

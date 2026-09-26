@@ -35,6 +35,7 @@ from pydantic import Field
 
 from ..config import Settings
 from ..errors import ToolError
+from ..tokens import content_token
 from ._common import read_only, truncate
 
 DISCOVERY_DIRECTORY = "xlide_vbide"
@@ -172,7 +173,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "the difference is exactly the user's unsaved work. Use it to see what they are "
             "actually working on; use xlide_read_module for what is in the file. "
             "surface_only=true reads the modern editor's own copy instead, which exists only "
-            "for a module the user has open in a tab."
+            "for a module the user has open in a tab. start_line and end_line read a slice "
+            "of long live source; content_token describes the whole live module."
         ),
     )
     def live_read_module(
@@ -198,6 +200,12 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = False,
+        start_line: Annotated[
+            int, Field(default=0, ge=0, description="First source line. 0 means the start.")
+        ] = 0,
+        end_line: Annotated[
+            int, Field(default=0, ge=0, description="Last source line. 0 means the end.")
+        ] = 0,
     ) -> dict[str, Any]:
         instance = _pick(pid)
         # `live=1` asks the Monaco surface for its copy, and the surface holds text
@@ -218,20 +226,50 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ) from exc
             raise
         source = ""
+        source_found = False
         if isinstance(payload, dict):
             for key in ("text", "source", "content"):
                 if isinstance(payload.get(key), str):
                     source = payload[key]
+                    source_found = True
                     break
-        text, was_cut = truncate(source)
-        return {
+        lines = source.splitlines()
+        first = start_line or 1
+        last = min(len(lines), end_line or len(lines))
+        if end_line and end_line < first:
+            raise ToolError(
+                f"end_line {end_line} is before start_line {first}. "
+                "Use an end line at or after the start line."
+            )
+        if source_found and lines and first > len(lines):
+            raise ToolError(
+                f"{module_name} has {len(lines)} lines; start_line {start_line} is past the end."
+            )
+        if source_found and not lines and (start_line or end_line):
+            raise ToolError(f"{module_name} has no source lines to read.")
+        sliced = (
+            source.replace("\r\n", "\n")
+            if first == 1 and last == len(lines)
+            else "\n".join(lines[first - 1 : last])
+        )
+        text, was_cut = truncate(
+            sliced, hint="Read a narrower range with start_line and end_line."
+        )
+        result: dict[str, Any] = {
             "session": instance.describe(),
             "module": module_name,
+            "content_token": content_token(source) if source_found else None,
+            "total_lines": len(lines) if source_found else None,
+            "first_line": first if lines else 0,
+            "last_line": last,
             "truncated": was_cut,
             "source": text,
             "raw": payload if not source else None,
             "note": "This is the editor's live text, which may differ from the saved file.",
         }
+        if lines and (first != 1 or last != len(lines)):
+            result["note"] += " The content_token describes the whole module."
+        return result
 
 
 def live_report() -> dict[str, Any]:

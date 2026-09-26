@@ -21,7 +21,7 @@ from ..config import Settings, clamp_timeout
 from ..errors import ToolError
 from ..hosts import host_info
 from ..paths import require_writable, resolve_path
-from ._common import bound, read_only, writes
+from ._common import page, read_only, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -33,8 +33,12 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Lists the worksheets in an Excel file with their used ranges, whether each is "
             "hidden, and the pivot tables on each, the chart sheets, and the workbook's named "
             "ranges. Call this before reading cells, so the range you ask for is one that "
-            "holds data. Works on .xlsx, .xlsm and .xlam; a .xlsb or .xls keeps its grid in a "
-            "binary format, and Excel answers for those on Windows."
+            "holds data. On .xlsx, .xlsm and .xlam the file also supplies pivot tables, "
+            "chart sheets and named ranges. For .xlsb and .xls, Windows with Excel is "
+            "required; that path surveys sheet names, used ranges and visibility only. "
+            "Unreadable visibility or pivot metadata is marked unknown with hidden_error "
+            "or pivot_tables_error. A malformed Excel survey is refused rather than "
+            "returned as a partial sheet list."
         ),
     )
     def list_sheets(
@@ -66,12 +70,14 @@ def register(server: MCPServer, settings: Settings) -> None:
         annotations=read_only("Read cells"),
         description=(
             "Reads a range of cells from a worksheet and returns a grid of values, formulas, "
-            "both, or the text each cell shows under its number format. Values are what Excel "
-            "last calculated and stored, so a formula whose inputs changed outside Excel shows "
-            "its old result; calculate=true works every formula out first with pyOfficeEditor's "
-            "formula engine, in memory, and names any cell it could not work out. Ask for "
-            "formulas to understand what a sheet computes, and values for what it shows. At "
-            "most 20,000 cells per call."
+            "both, or the text each cell shows under its number format. On .xlsx, .xlsm and "
+            ".xlam, values are what Excel last calculated and stored; calculate=true works "
+            "formulas out in memory with pyOfficeEditor's engine and names cells it could not "
+            "work out. A failed formatted or rich-text read names the cell and refuses rather "
+            "than returning an empty value. On .xlsb and .xls, Windows with Excel is required "
+            "and only calculated "
+            "values are available, not formulas or formatted text. A partial grid from Excel "
+            "is refused. At most 20,000 cells per call."
         ),
     )
     def read_cells(
@@ -96,8 +102,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             Field(
                 default=False,
                 description=(
-                    "Work every formula out before reading, with the formula engine. The file "
-                    "is not changed. Use it after writing inputs, to see the results now."
+                    "For .xlsx, .xlsm and .xlam, work formulas out in memory before reading. "
+                    "The file is not changed. Binary .xlsb and .xls reads use Excel instead."
                 ),
             ),
         ] = False,
@@ -216,7 +222,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "chosen item, a spinner's value and bounds, the cell it is linked to. Call it "
             "when asked how a workbook is started, or before renaming a Sub: a button's "
             "OnAction names a procedure and nothing rewrites it. ActiveX controls are "
-            "listed but have no macro; their code is event procedures in the sheet's module."
+            "listed but have no macro; their code is event procedures in the sheet's module. "
+            "For a crowded sheet, use sheet with offset and next_offset to read later shapes."
         ),
     )
     def list_shapes(
@@ -225,7 +232,15 @@ def register(server: MCPServer, settings: Settings) -> None:
             str,
             Field(default="", description="One worksheet. Empty lists every sheet's shapes."),
         ] = "",
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many shapes on one sheet.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="Return at most this many per sheet.")
+        ] = 300,
     ) -> dict[str, Any]:
+        if offset and not sheet.strip():
+            raise ToolError("Set sheet when using offset to page through shapes.")
         path = excel_with_sheets(file_path, settings)
         from ..shapes import control_states, read_sheet_shapes
 
@@ -233,6 +248,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         states = control_states(path)
         sheets = []
         notes: list[str] = []
+        next_offsets: dict[str, int] = {}
         for name, shapes in by_sheet.items():
             known = states.get(name, {})
             summaries = []
@@ -240,14 +256,14 @@ def register(server: MCPServer, settings: Settings) -> None:
                 entry = shape.summary()
                 entry.update(known.get(shape.name.casefold(), {}))
                 summaries.append(entry)
-            shown, note = bound(
-                summaries,
-                "shapes",
-                f"Ask for one sheet with sheet={name!r}.",
-            )
+            shown, next_offset = page(summaries, "shapes", offset, max_results)
             sheets.append({"sheet": name, "shapes": shown})
-            if note:
-                notes.append(f"{name}: {note}")
+            if next_offset is not None:
+                next_offsets[name] = next_offset
+                notes.append(
+                    f"{name}: {len(summaries)} shapes in all; call again with "
+                    f"sheet={name!r} and offset={next_offset} for the next page."
+                )
         total = sum(len(shapes) for shapes in by_sheet.values())
         with_macros = [
             {"sheet": entry["sheet"], "shape": shape["name"], "macro": shape["macro"]}
@@ -259,7 +275,11 @@ def register(server: MCPServer, settings: Settings) -> None:
             "path": str(path),
             "shape_count": total,
             "sheets": sheets,
+            "offset": offset,
+            "next_offsets": next_offsets,
         }
+        if sheet.strip():
+            result["next_offset"] = next_offsets.get(sheets[0]["sheet"]) if sheets else None
         if notes:
             result["note"] = " ".join(notes)
         if with_macros:
@@ -515,11 +535,12 @@ def register(server: MCPServer, settings: Settings) -> None:
             "with no _xlfn prefixes; anything else is a value. A cell given as "
             "{\"rich_text\": [{\"text\": \"Total \", \"bold\": true}, {\"text\": \"42\"}]} "
             "is text in more than one font. A value written over a formula removes that "
-            "formula, which is what typing into the cell does. Only the rows you touch are "
-            "rewritten, so charts, styles, pivot caches and the VBA project are untouched. Ask "
-            "the user before overwriting cells that hold data. The file keeps no calculated "
-            "result until Excel next opens it; xlide_read_cells with calculate=true works "
-            "the results out now."
+            "formula, which is what typing into the cell does. On .xlsx, .xlsm and .xlam, "
+            "only the touched worksheet rows are rewritten; their cached formula results "
+            "remain stale until Excel opens the file or xlide_read_cells calculates them "
+            "in memory. Writing .xlsb cells needs Windows with Excel, which recalculates and "
+            "saves the workbook. Writing .xls cells is not offered. Cells that hold data are "
+            "refused until allow_overwrite=true; ask the user first."
         ),
     )
     def write_cells(
@@ -539,6 +560,16 @@ def register(server: MCPServer, settings: Settings) -> None:
                 )
             ),
         ],
+        allow_overwrite: Annotated[
+            bool,
+            Field(
+                default=False,
+                description=(
+                    "Allow replacing cells that already hold data or formulas. Ask the user "
+                    "first. Without it, the write is refused before saving."
+                ),
+            ),
+        ] = False,
         timeout: Annotated[
             float,
             Field(default=0, ge=0, description="Seconds allowed if Excel has to do the write."),
@@ -548,13 +579,16 @@ def register(server: MCPServer, settings: Settings) -> None:
         path, info = _any_excel(file_path, settings)
         if not data:
             raise ToolError("data is empty; nothing to write.")
+        width = len(data[0])
+        if not width or any(len(row) != width for row in data):
+            raise ToolError("data must be a nonempty rectangular block of cells.")
         if not info.supports_sheets:
             return _through_excel_write(
-                path, info, sheet, start_cell, data,
+                path, info, sheet, start_cell, data, allow_overwrite,
                 clamp_timeout(timeout or None, settings),
             )
 
-        written = cells.write(path, sheet, start_cell, data)
+        written = cells.write(path, sheet, start_cell, data, allow_overwrite=allow_overwrite)
         result: dict[str, Any] = {
             "path": str(path),
             "sheet": written.sheet,
@@ -629,6 +663,17 @@ def _through_excel_sheets(path: Path, info: Any, timeout: float) -> dict[str, An
 def _through_excel_read(
     path: Path, info: Any, sheet: str, cell_range: str, include: str, timeout: float
 ) -> dict[str, Any]:
+    from pyofficeeditor.excel import RangeRef
+
+    try:
+        span = RangeRef.parse(cell_range).normalized
+    except ValueError as exc:
+        raise ToolError(f"{cell_range!r} is not an A1-style range: {exc}") from exc
+    if span.size > cells.MAX_CELLS_PER_READ:
+        raise ToolError(
+            f"{span.a1} is {span.size:,} cells, over the {cells.MAX_CELLS_PER_READ:,} "
+            "a single read returns. Read it in blocks."
+        )
     if not grid.excel_available():
         raise grid.refuse(info, "Reading cells")
     if include != "values":
@@ -637,14 +682,22 @@ def _through_excel_read(
             "returns what each cell evaluates to rather than the formula behind it."
         )
     rows = grid.read_cells(path, sheet, cell_range, timeout)
+    if len(rows) != span.height or any(len(row) != span.width for row in rows):
+        widths = sorted({len(row) for row in rows})
+        raise ToolError(
+            f"Excel returned {len(rows)} rows with column counts {widths} for {span.a1}, "
+            "which requires "
+            f"{span.height} rows and {span.width} columns. No partial cell values were "
+            "returned; retry the read or use a smaller range."
+        )
     return {
         "path": str(path),
         "sheet": sheet,
         "source": "excel",
         "recalculated": True,
         "range": cell_range,
-        "rows": len(rows),
-        "columns": max((len(r) for r in rows), default=0),
+        "rows": span.height,
+        "columns": span.width,
         "values": rows,
         "note": (
             f"{info.extension} keeps its grid in a binary format this server does not read, "
@@ -655,11 +708,13 @@ def _through_excel_read(
 
 
 def _through_excel_write(
-    path: Path, info: Any, sheet: str, start_cell: str, data: list[list[Any]], timeout: float
+    path: Path, info: Any, sheet: str, start_cell: str, data: list[list[Any]],
+    allow_overwrite: bool, timeout: float,
 ) -> dict[str, Any]:
     if not grid.excel_available():
         raise grid.refuse(info, "Writing cells")
-    result = grid.write_cells(path, sheet, start_cell, data, timeout)
+    result = grid.write_cells(path, sheet, start_cell, data, timeout,
+                              allow_overwrite=allow_overwrite)
     rows = len(data)
     columns = max((len(row) for row in data), default=0)
     return {
@@ -667,6 +722,7 @@ def _through_excel_write(
         "sheet": sheet,
         "source": "excel",
         "cells_written": rows * columns,
+        "cells_overwritten": result["cells_overwritten"],
         "saved": bool(result.get("saved")),
         "recalculated": True,
         "note": (

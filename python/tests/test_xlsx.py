@@ -170,16 +170,37 @@ def test_overwriting_content_is_reported(
         start_cell="A1",
         data=[["first"], ["=1+1"]],
     )
+    before = plain_workbook.read_bytes()
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_write_cells", file_path=str(plain_workbook), sheet="Sheet1",
+            start_cell="A1", data=[["second"], ["third"]],
+        )
+    assert "allow_overwrite=true" in refusal.value.message
+    assert plain_workbook.read_bytes() == before
     again = call(
         "xlide_write_cells",
         file_path=str(plain_workbook),
         sheet="Sheet1",
         start_cell="A1",
         data=[["second"], ["third"]],
+        allow_overwrite=True,
     )
     assert again["cells_overwritten"] == 2
     assert again["formulas_replaced"] == 1
     assert "warning" in again
+
+
+def test_large_write_reports_every_overwritten_cell(
+    call: Callable[..., Any], plain_workbook: Path
+) -> None:
+    data = [["old"] * 101 for _ in range(200)]
+    call("xlide_write_cells", file_path=str(plain_workbook), sheet="Sheet1",
+         start_cell="A1", data=data)
+    again = call("xlide_write_cells", file_path=str(plain_workbook), sheet="Sheet1",
+                 start_cell="A1", data=[["new"] * 101 for _ in range(200)],
+                 allow_overwrite=True)
+    assert again["cells_overwritten"] == 20_200
 
 
 def test_unknown_sheet_names_the_ones_that_exist(
@@ -220,6 +241,124 @@ def test_a_binary_workbook_is_not_read_from_the_package(
     result = call("xlide_list_sheets", file_path=str(binary), timeout=240)
     assert result["source"] == "excel"
     assert result["sheets"]
+
+
+def test_unreadable_pivots_are_unknown_rather_than_absent() -> None:
+    from xlide_mcp.cells import _sheet_info
+
+    class BrokenPivotSheet:
+        name = "Summary"
+        used_range = None
+        visible = "visible"
+
+        @property
+        def pivot_tables(self) -> list[Any]:
+            raise ValueError("pivot cache is damaged")
+
+    summary = _sheet_info(BrokenPivotSheet()).summary()
+    assert summary["pivot_tables"] is None
+    assert "pivot cache is damaged" in summary["pivot_tables_error"]
+
+
+def test_unreadable_sheet_visibility_is_unknown_rather_than_visible() -> None:
+    from xlide_mcp.cells import _sheet_info
+
+    class BrokenVisibility:
+        name = "Summary"
+        used_range = None
+
+        @property
+        def pivot_tables(self) -> list[Any]:
+            return []
+
+        @property
+        def visible(self) -> str:
+            raise ValueError("sheet state is damaged")
+
+    summary = _sheet_info(BrokenVisibility()).summary()
+    assert summary["hidden"] is None
+    assert "sheet state is damaged" in summary["hidden_error"]
+
+    class UnknownVisibility(BrokenVisibility):
+        visible = "mystery"
+
+    unknown = _sheet_info(UnknownVisibility()).summary()
+    assert unknown["hidden"] is None
+    assert "unknown state" in unknown["hidden_error"]
+
+
+def test_unreadable_cell_presentation_is_not_returned_as_blank() -> None:
+    from xlide_mcp.cells import CellsError, _runs, _text
+
+    class Cell:
+        a1 = "B2"
+        reference = "B2"
+
+        @property
+        def text(self) -> str:
+            raise ValueError("number format is damaged")
+
+    class Sheet:
+        def get_rich_text(self, _reference: str) -> None:
+            raise ValueError("rich text record is damaged")
+
+    with pytest.raises(CellsError) as refusal:
+        _text(Cell())
+    assert "B2" in str(refusal.value)
+    assert "include='values'" in str(refusal.value)
+
+    with pytest.raises(CellsError) as refusal:
+        _runs(Sheet(), Cell())
+    assert "B2" in str(refusal.value)
+    assert "rich text record is damaged" in str(refusal.value)
+
+
+def test_a_partial_binary_cell_grid_is_refused(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], workspace: Path
+) -> None:
+    import pyopenvba
+
+    from xlide_mcp import grid
+
+    binary = workspace / "Binary.xlsb"
+    with pyopenvba.ExcelFile.create_new(binary) as book:
+        book.save()
+
+    monkeypatch.setattr(grid, "excel_available", lambda: True)
+    monkeypatch.setattr(grid, "read_cells", lambda *_args: [[1]])
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_read_cells", file_path=str(binary), sheet="Sheet1",
+            cell_range="A1:B2",
+        )
+    assert "No partial cell values were returned" in refusal.value.message
+    assert "requires 2 rows and 2 columns" in refusal.value.message
+
+
+def test_a_huge_binary_range_is_refused_before_excel_starts(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], workspace: Path
+) -> None:
+    import pyopenvba
+
+    from xlide_mcp import grid
+
+    binary = workspace / "Binary.xlsb"
+    with pyopenvba.ExcelFile.create_new(binary) as book:
+        book.save()
+
+    monkeypatch.setattr(grid, "excel_available", lambda: True)
+
+    def should_not_start(*_args: Any) -> Any:
+        raise AssertionError("Excel must not start for an oversized request")
+
+    monkeypatch.setattr(grid, "read_cells", should_not_start)
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_read_cells", file_path=str(binary), sheet="Sheet1",
+            cell_range="A1:Z10000",
+        )
+    assert "over the 20,000" in refusal.value.message
+    assert "Read it in blocks" in refusal.value.message
 
 
 def test_a_huge_range_is_refused_rather_than_returned(

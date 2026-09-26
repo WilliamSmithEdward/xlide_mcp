@@ -20,7 +20,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import CREATABLE, NOT_READABLE, host_info, iter_office_files, require_readable
 from ..paths import require_writable, resolve_path
-from ._common import bound, limited, read_only, writes
+from ._common import bound, page, read_only, writes
 
 
 def register(server: MCPServer, settings: Settings) -> None:
@@ -36,7 +36,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "(.pptm, .potm), Access (.accdb, .mdb), and Visual Basic 6 projects (.vbp, "
             "whose modules are the files its manifest names). Files whose extension is "
             "recognized but not openable are listed with the reason, so a template or add-in "
-            "is not silently missing."
+            "is not silently missing. Use offset and next_offset to read large workspaces "
+            "in pages."
         ),
     )
     def list_projects(
@@ -49,6 +50,12 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = "",
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many files before a page.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=2000, ge=1, le=2000, description="Return at most this many files.")
+        ] = 2000,
     ) -> dict[str, Any]:
         roots = (
             [resolve_path(subfolder, settings, must_exist=True, must_be_file=False)]
@@ -70,14 +77,19 @@ def register(server: MCPServer, settings: Settings) -> None:
                 if not info.readable:
                     entry["reason"] = info.reason
                 found.append(entry)
-        shown, total = limited(found)
+        shown, next_offset = page(found, "files", offset, max_results)
         result: dict[str, Any] = {
             "roots": [str(r) for r in roots],
-            "count": total,
+            "count": len(found),
             "files": shown,
+            "offset": offset,
+            "next_offset": next_offset,
         }
-        if total > len(shown):
-            result["note"] = f"{total - len(shown)} more; narrow the search with subfolder."
+        if next_offset is not None:
+            result["note"] = (
+                f"{len(found)} files in all; call again with offset={next_offset} "
+                "for the next page, or narrow the search with subfolder."
+            )
         if not found:
             result["note"] = (
                 "No Office files under "
@@ -91,13 +103,15 @@ def register(server: MCPServer, settings: Settings) -> None:
         title="Project summary",
         annotations=read_only("Project summary"),
         description=(
-            "Everything about one Office file in a single call: its VBA modules with kinds "
+            "A summary of one Office file in a single call: its VBA modules with kinds "
             "and line counts, its UserForms, its Power Query queries, its worksheets with "
             "used ranges and named ranges, and whether the VBA project is password-protected "
             "or digitally signed. has_vba_project is false for a macro-enabled file saved "
             "before its first macro, which is normal: the first xlide_write_module gives it "
             "a project. Call this once per file before working on it. Each module carries a "
-            "content_token for a guarded write."
+            "content_token for a guarded write. For .xlsb and .xls sheet details, call "
+            "xlide_list_sheets on Windows with Excel. An unreadable form or query summary "
+            "is reported as unknown rather than empty."
         ),
     )
     def project_info(
@@ -133,7 +147,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                     result["modules_note"] = note
                 result["password_protected"] = status.password_protected
                 result["digitally_signed"] = status.digitally_signed
-                result["forms"] = _form_names(handle)
+                result.update(_form_names(handle))
             cautions = status.warnings()
             if cautions:
                 result["cautions"] = cautions
@@ -145,6 +159,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         elif info.host == "excel":
             result["sheets_note"] = (
                 f"Worksheet cells are not read from {info.extension}; its grid is not OOXML. "
+                "Call xlide_list_sheets on Windows with Excel for sheet names and used ranges. "
                 "The VBA project is fully readable."
             )
         return result
@@ -157,32 +172,53 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Checks a file's VBA project for structural problems: records that disagree with "
             "each other, a module the directory names but the container does not hold, and "
             "the like. This is about the container, not about the code; use xlide_analyze for "
-            "the code. Worth calling before risky work on an old or repaired file."
+            "the code. Worth calling before risky work on an old or repaired file. Use offset "
+            "and next_offset to read later problems from a damaged file."
         ),
     )
     def validate_project(
         file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Problems to skip.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="Most problems to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
         with project_layer.open_project(path, info) as handle:
             has_project = project_layer.has_project(handle, info)
-            try:
-                problems = list(handle.validate()) if has_project else []
-            except AttributeError:
+            validator = getattr(handle, "validate", None)
+            if has_project and not callable(validator):
                 return {
                     "path": str(path),
                     "supported": False,
                     "note": f"Structural validation is not implemented for {info.title} files.",
                 }
+            try:
+                problems = list(validator()) if has_project else []
+            except Exception as exc:
+                raise ToolError(
+                    f"Structural validation of {path.name} could not complete: {exc}. "
+                    "The file may be damaged; inspect it in its Office application."
+                ) from exc
+        shown, next_offset = page(problems, "problems", offset, max_results)
         result: dict[str, Any] = {
             "path": str(path),
             "supported": True,
             "has_vba_project": has_project,
             "problem_count": len(problems),
-            "problems": problems,
+            "problems": shown,
+            "offset": offset,
+            "next_offset": next_offset,
             "verdict": "clean" if not problems else "problems found",
         }
+        if next_offset is not None:
+            result["note"] = (
+                f"{len(problems)} structural problems in all; call again with "
+                f"offset={next_offset} for the next page."
+            )
         if not has_project:
             result["note"] = project_layer.no_project_note(path, info)
         return result
@@ -364,11 +400,14 @@ def _probe(module: str) -> dict[str, Any]:
     return {"available": True, "version": getattr(imported, "__version__", "unknown")}
 
 
-def _form_names(handle: Any) -> list[str]:
+def _form_names(handle: Any) -> dict[str, Any]:
     try:
-        return [form.name for form in handle.forms()]
-    except Exception:
-        return []
+        return {"forms": [form.name for form in handle.forms()]}
+    except Exception as exc:
+        return {
+            "forms": None,
+            "forms_error": f"The forms could not be read: {exc}",
+        }
 
 
 def _query_summary(path: Path) -> dict[str, Any]:
@@ -377,10 +416,10 @@ def _query_summary(path: Path) -> dict[str, Any]:
     try:
         with pyopenvba.PowerQueryWorkbook(path) as book:
             names = list(book.query_names())
-    except pyopenvba.PowerQueryError:
-        return {"count": 0, "queries": []}
+    except pyopenvba.PowerQueryError as exc:
+        return {"count": None, "queries": None, "error": f"The queries could not be read: {exc}"}
     except Exception as exc:
-        return {"count": 0, "queries": [], "note": str(exc)}
+        return {"count": None, "queries": None, "error": f"The queries could not be read: {exc}"}
     return {"count": len(names), "queries": names}
 
 

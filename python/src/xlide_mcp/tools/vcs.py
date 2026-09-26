@@ -33,7 +33,7 @@ from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import resolve_path
 from ..textual import COVERAGE, Section, sections
-from ._common import MAX_ITEMS, bound, read_only, unified_diff
+from ._common import MAX_ITEMS, bound, change_summary, read_only, unified_diff
 
 # A git call that has not answered by now is a repository problem, not slow work.
 GIT_TIMEOUT = 30.0
@@ -200,10 +200,8 @@ def _change(present: Section, before: Section | None, after: Section | None) -> 
         to_label="now",
         narrower="Ask for this one on its own.",
     )
-    lines = text.splitlines()
-    added = sum(1 for line in lines if line.startswith("+") and not line.startswith("+++"))
-    removed = sum(1 for line in lines if line.startswith("-") and not line.startswith("---"))
-    return _Change(status, text, truncated, added, removed)
+    summary = change_summary(old, new)
+    return _Change(status, text, truncated, summary["lines_added"], summary["lines_removed"])
 
 
 def _same(left: str, right: str) -> bool:

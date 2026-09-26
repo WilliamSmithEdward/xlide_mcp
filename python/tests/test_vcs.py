@@ -175,6 +175,21 @@ def test_a_long_diff_reports_how_much_it_withheld() -> None:
     assert lines[-1].startswith("... 603 more diff lines")
 
 
+def test_long_change_counts_lines_beyond_the_display_limit() -> None:
+    from types import SimpleNamespace
+
+    from xlide_mcp.tools.vcs import _change
+
+    before = SimpleNamespace(name="Big", kind="module",
+                             source="\n".join(f"x = {i}" for i in range(500)))
+    after = SimpleNamespace(name="Big", kind="module",
+                            source="\n".join(f"y = {i}" for i in range(500)))
+    change = _change(after, before, after)
+    assert change.truncated is True
+    assert change.added == 500
+    assert change.removed == 500
+
+
 def test_a_file_outside_a_repository_says_so(
     call: Callable[..., Any], workbook: Path
 ) -> None:

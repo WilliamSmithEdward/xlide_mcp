@@ -20,6 +20,14 @@ from mcp.types import ToolAnnotations
 MAX_RESULT_CHARS = 120_000
 MAX_LIST_ITEMS = 2_000
 
+ALLOW_PROTECTED_DESCRIPTION = (
+    "Permit saving a password-protected VBA project. Set true only after the user agrees."
+)
+ALLOW_SIGNATURE_DESCRIPTION = (
+    "Permit saving a change that removes the VBA project's digital signature, where "
+    "applicable. Set true only after the user agrees."
+)
+
 
 def read_only(title: str) -> ToolAnnotations:
     return ToolAnnotations(
@@ -174,3 +182,12 @@ def bound(items: list[Any], what: str, narrower: str = "") -> tuple[list[Any], s
     withheld = len(items) - kept
     note = f"{len(items)} {what} in all; the first {kept} are here and {withheld} are not."
     return items[:kept], f"{note} {narrower}".strip()
+
+
+def page(
+    items: list[Any], what: str, offset: int, max_results: int
+) -> tuple[list[Any], int | None]:
+    """A size-bounded page and the offset of the next one, if any."""
+    shown, _ = bound(items[offset : offset + max_results], what)
+    following = offset + len(shown)
+    return shown, following if following < len(items) else None

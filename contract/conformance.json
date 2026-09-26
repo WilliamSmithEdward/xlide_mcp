@@ -64,6 +64,12 @@
             }
           ]
         }
+      ],
+      "queries": [
+        {
+          "name": "AllOrders",
+          "sql": "SELECT * FROM Orders;"
+        }
       ]
     },
     "vb6_project": {
@@ -208,7 +214,7 @@
       }
     }
   },
-  "case_count": 98,
+  "case_count": 133,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -243,6 +249,112 @@
         {
           "path": "modules",
           "at_least": 1
+        }
+      ]
+    },
+    {
+      "id": "list-sheets.reports-the-file-backed-grid",
+      "why": "A caller needs a real sheet name and source before choosing a cell range.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_sheets",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "source",
+          "equals": "file"
+        },
+        {
+          "path": "sheets[0].name",
+          "equals": "Sheet1"
+        },
+        {
+          "path": "named_ranges",
+          "type": "array"
+        }
+      ]
+    },
+    {
+      "id": "validate-project.distinguishes-a-clean-container",
+      "why": "Structural validation and source analysis answer different questions; a clean container reports a supported check with no structural problems.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_validate_project",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "supported",
+          "equals": true
+        },
+        {
+          "path": "problem_count",
+          "equals": 0
+        },
+        {
+          "path": "verdict",
+          "equals": "clean"
+        }
+      ]
+    },
+    {
+      "id": "page-setup.reports-print-settings",
+      "why": "The sheet's print settings are readable without opening Excel.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_page_setup",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "sheet",
+          "equals": "Sheet1"
+        },
+        {
+          "path": "margins",
+          "type": "object"
+        },
+        {
+          "path": "print_area",
+          "type": "array"
+        }
+      ]
+    },
+    {
+      "id": "rules.exposes-the-diagnostic-catalogue",
+      "why": "A caller can discover the rule catalogue before explaining an analysis finding.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_rules",
+          "arguments": {}
+        }
+      ],
+      "expect": [
+        {
+          "path": "count",
+          "at_least": 100
+        },
+        {
+          "path": "rules",
+          "at_least": 100
         }
       ]
     },
@@ -380,6 +492,268 @@
       ]
     },
     {
+      "id": "list-procedures.token-guards-an-edit",
+      "why": "A procedure listing returns its module token, so its line can be edited without a separate module read.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_procedures",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers"
+          }
+        },
+        {
+          "tool": "xlide_edit_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "expected_content_token": "${step[0].content_token}",
+            "edits": [
+              {
+                "start_line": "${step[0].procedures[0].line}",
+                "end_line": "${step[0].procedures[0].line}",
+                "replacement": "Private Function AddNums(ByVal a As Long, ByVal b As Long) As Long"
+              }
+            ]
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "applied",
+          "equals": true
+        },
+        {
+          "path": "diff",
+          "contains": "+Private Function AddNums"
+        }
+      ]
+    },
+    {
+      "id": "read-module.empty-body-is-readable",
+      "why": "An empty module still returns its token and an empty body, so it can be edited.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Blank",
+            "source": ""
+          }
+        },
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Blank"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "source",
+          "equals": ""
+        },
+        {
+          "path": "total_lines",
+          "equals": 0
+        },
+        {
+          "path": "first_line",
+          "equals": 0
+        },
+        {
+          "path": "content_token",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "read-module.refuses-reversed-slice",
+      "why": "A reversed line range is refused with a reason rather than returning empty text.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "start_line": 5,
+            "end_line": 3
+          },
+          "error_contains": "end_line 3 is before start_line 5"
+        }
+      ],
+      "fixture": "workbook"
+    },
+    {
+      "id": "search-modules.token-guards-a-line-edit",
+      "why": "Search returns both a matching line and its module token, so a caller can make a guarded edit without reading the module again.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_search_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "query": "AddNums = a + b"
+          }
+        },
+        {
+          "tool": "xlide_edit_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "expected_content_token": "${step[0].content_tokens.Helpers}",
+            "edits": [
+              {
+                "start_line": "${step[0].matches[0].line}",
+                "end_line": "${step[0].matches[0].line}",
+                "replacement": "    AddNums = a * b"
+              }
+            ]
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "applied",
+          "equals": true
+        },
+        {
+          "path": "diff",
+          "contains": "+    AddNums = a * b"
+        }
+      ]
+    },
+    {
+      "id": "search-modules.pages-through-matches",
+      "why": "A broad search reports the full match count and a next offset, so callers can reach matches after the first page.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_search_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "query": "AddNums",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_search_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "query": "AddNums",
+            "max_results": 1,
+            "offset": "${step[0].next_offset}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "match_count",
+          "equals": 1
+        },
+        {
+          "path": "total_match_count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "matches[0].line",
+          "equals": 4
+        }
+      ]
+    },
+    {
+      "id": "edit-module.uses-selected-lines-and-a-token",
+      "why": "Several small edits use original line numbers. A preview returns the unchanged token, which still guards the following save.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "line_ranges": [
+              [
+                3,
+                4
+              ],
+              [
+                7,
+                10
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_edit_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "expected_content_token": "${step[0].content_token}",
+            "preview_only": true,
+            "edits": [
+              {
+                "start_line": 4,
+                "end_line": 4,
+                "replacement": "    AddNums = a * b"
+              },
+              {
+                "start_line": 10,
+                "end_line": 10,
+                "replacement": "    Debug.Print \"hi \" & who"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "xlide_edit_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "expected_content_token": "${step[1].content_token}",
+            "edits": [
+              {
+                "start_line": 4,
+                "end_line": 4,
+                "replacement": "    AddNums = a * b"
+              },
+              {
+                "start_line": 10,
+                "end_line": 10,
+                "replacement": "    Debug.Print \"hi \" & who"
+              }
+            ]
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "edits_applied",
+          "equals": 2
+        },
+        {
+          "path": "diff",
+          "contains": "+    AddNums = a * b"
+        }
+      ]
+    },
+    {
       "id": "write-module.round-trips-and-reissues-the-token",
       "why": "A write answers with the token of what it wrote, so the next write can be guarded without a second read.",
       "requires": "files",
@@ -417,6 +791,48 @@
         {
           "path": "content_token",
           "equals": "${step[1].content_token}"
+        }
+      ]
+    },
+    {
+      "id": "write-module.identical-source-skips-save",
+      "why": "A full module read preserves its final newline, and writing that source back does not rewrite the Office file.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers"
+          }
+        },
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "${step[0].source}",
+            "expected_content_token": "${step[0].content_token}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "changed",
+          "equals": false
+        },
+        {
+          "path": "saved",
+          "equals": false
+        },
+        {
+          "path": "diff",
+          "equals": "(no change)"
+        },
+        {
+          "path": "content_token",
+          "equals": "${step[0].content_token}"
         }
       ]
     },
@@ -760,6 +1176,55 @@
       ]
     },
     {
+      "id": "analyze.pages-through-findings",
+      "why": "A bounded analysis result reaches later findings without changing the project-wide severity counts.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Broken",
+            "source": "Option Explicit\r\n\r\nPublic Sub Broken()\r\n    Dim n As Long\r\n    n = \"first\"\r\n    n = \"second\"\r\nEnd Sub\r\n"
+          }
+        },
+        {
+          "tool": "xlide_analyze",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Broken",
+            "min_severity": "error",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_analyze",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Broken",
+            "min_severity": "error",
+            "max_results": 1,
+            "offset": "${step[1].next_offset}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "matching_count",
+          "at_least": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "problems",
+          "at_least": 1
+        }
+      ]
+    },
+    {
       "id": "analyze-source.needs-no-file",
       "why": "Checking generated code before writing it costs nothing and catches the compile errors that would otherwise surface in front of the user.",
       "requires": "files",
@@ -779,6 +1244,42 @@
         },
         {
           "path": "counts.error",
+          "at_least": 1
+        }
+      ]
+    },
+    {
+      "id": "analyze-source.pages-through-findings",
+      "why": "A draft source with many findings can be inspected a page at a time.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_analyze_source",
+          "arguments": {
+            "source": "Option Explicit\r\n\r\nPublic Sub Broken()\r\n    Dim n As Long\r\n    n = \"first\"\r\n    n = \"second\"\r\nEnd Sub\r\n",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_analyze_source",
+          "arguments": {
+            "source": "Option Explicit\r\n\r\nPublic Sub Broken()\r\n    Dim n As Long\r\n    n = \"first\"\r\n    n = \"second\"\r\nEnd Sub\r\n",
+            "max_results": 1,
+            "offset": "${step[0].next_offset}"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "path": "matching_count",
+          "at_least": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "problems",
           "at_least": 1
         }
       ]
@@ -847,6 +1348,41 @@
         {
           "path": "files",
           "contains": "\"readable\": false"
+        }
+      ]
+    },
+    {
+      "id": "list-projects.offset-past-last-page-is-empty",
+      "why": "An offset beyond the last file returns an empty page and the total count.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_projects",
+          "arguments": {
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_list_projects",
+          "arguments": {
+            "max_results": 1,
+            "offset": "${step[0].count}"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 1
+        },
+        {
+          "path": "files",
+          "equals": []
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
         }
       ]
     },
@@ -983,7 +1519,7 @@
     },
     {
       "id": "cells.report-what-was-overwritten",
-      "why": "Overwriting data is the user's decision, and they can only make it if the agent is told what it displaced.",
+      "why": "Overwriting data is the user's decision. An explicit flag is required, and the result says what it displaced.",
       "requires": "files",
       "steps": [
         {
@@ -1015,7 +1551,8 @@
               [
                 "third"
               ]
-            ]
+            ],
+            "allow_overwrite": true
           }
         }
       ],
@@ -1030,6 +1567,41 @@
           "equals": 1
         }
       ]
+    },
+    {
+      "id": "cells.refuse-an-unapproved-overwrite",
+      "why": "An occupied cell or formula is never replaced before the caller explicitly allows it after asking the user.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "first"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "second"
+              ]
+            ]
+          },
+          "error_contains": "allow_overwrite=true"
+        }
+      ],
+      "fixture": "plain_workbook"
     },
     {
       "id": "cells.unknown-sheet-names-the-ones-that-exist",
@@ -1081,6 +1653,128 @@
           "contains": "{1..20}"
         }
       ]
+    },
+    {
+      "id": "power-query.list-pages-reach-later-queries",
+      "why": "A bounded query list can return a later query on the next page.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "set",
+            "query_name": "Totals",
+            "formula": "let Source = 1 in Source"
+          }
+        },
+        {
+          "tool": "xlide_list_queries",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_list_queries",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "offset": "${step[1].next_offset}"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "queries[0].name",
+          "equals": "Totals"
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        }
+      ]
+    },
+    {
+      "id": "power-query.reads-a-formula-slice-with-a-whole-query-token",
+      "why": "A long M formula can be read by line without losing the token that guards the whole query.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "set",
+            "query_name": "Numbers",
+            "formula": "let\n    Source = {1..10}\nin\n    Source"
+          }
+        },
+        {
+          "tool": "xlide_read_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "query_name": "Numbers",
+            "start_line": 2,
+            "end_line": 2
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "formula",
+          "equals": "    Source = {1..10}"
+        },
+        {
+          "path": "total_lines",
+          "equals": 4
+        },
+        {
+          "path": "content_token",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "power-query.refuses-a-stale-token",
+      "why": "A query edit refuses to replace M that changed after the caller read it.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "query_name": "Numbers"
+          }
+        },
+        {
+          "tool": "xlide_write_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "set",
+            "query_name": "Numbers",
+            "formula": "let Source = {1..20} in Source",
+            "expected_content_token": "${step[0].content_token}"
+          }
+        },
+        {
+          "tool": "xlide_write_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "set",
+            "query_name": "Numbers",
+            "formula": "let Source = {1..30} in Source",
+            "expected_content_token": "${step[0].content_token}"
+          },
+          "error_contains": "changed since it was read"
+        }
+      ],
+      "fixture": "plain_workbook"
     },
     {
       "id": "power-query.a-query-loading-nowhere-has-no-refresh-settings",
@@ -1144,6 +1838,40 @@
       ]
     },
     {
+      "id": "export.unchanged-files-are-not-rewritten",
+      "why": "Applying an export twice reports zero files written the second time.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_export_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "export_folder": "${folder:vba}",
+            "apply": true
+          }
+        },
+        {
+          "tool": "xlide_export_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "export_folder": "${folder:vba}",
+            "apply": true
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "files_written",
+          "equals": 0
+        },
+        {
+          "path": "files_unchanged",
+          "at_least": 1
+        }
+      ]
+    },
+    {
       "id": "import.previews-before-it-writes",
       "why": "The rule agents get wrong most often stated as a guard: an import reports what it would change and writes nothing, so an edited export is still only a copy until someone applies it deliberately.",
       "requires": "files",
@@ -1173,6 +1901,44 @@
         {
           "path": "plan",
           "at_least": 1
+        }
+      ]
+    },
+    {
+      "id": "import.identical-modules-skip-save",
+      "why": "Applying an export without edits reports no changes and does not rewrite the Office file.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_export_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "export_folder": "${folder:vba}",
+            "apply": true
+          }
+        },
+        {
+          "tool": "xlide_import_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "source_folder": "${folder:vba}",
+            "apply": true
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "applied",
+          "equals": true
+        },
+        {
+          "path": "modules_changed",
+          "equals": 0
+        },
+        {
+          "path": "saved",
+          "equals": false
         }
       ]
     },
@@ -1279,6 +2045,36 @@
         {
           "path": "tables",
           "not_contains": "MSys"
+        }
+      ]
+    },
+    {
+      "id": "access.saved-query-sql-can-be-read-in-character-pages",
+      "why": "A long saved query needs a bounded read that returns its SQL without discarding the rest of the text.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_read_access_query",
+          "arguments": {
+            "file_path": "${fixture}",
+            "query_name": "AllOrders",
+            "max_chars": 6
+          }
+        }
+      ],
+      "fixture": "access_database",
+      "expect": [
+        {
+          "path": "sql",
+          "equals": "SELECT"
+        },
+        {
+          "path": "next_offset",
+          "equals": 6
+        },
+        {
+          "path": "content_token",
+          "starts_with": "xlide1:"
         }
       ]
     },
@@ -1575,6 +2371,100 @@
       ]
     },
     {
+      "id": "forms.control-pages-reach-later-controls",
+      "why": "A form read with a one-control page gives a next offset that reaches the next control.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_edit_form",
+          "arguments": {
+            "file_path": "${fixture}",
+            "form_name": "Wizard",
+            "action": "add_control",
+            "control_name": "Cancel",
+            "control_type": "CommandButton"
+          }
+        },
+        {
+          "tool": "xlide_read_form",
+          "arguments": {
+            "file_path": "${fixture}",
+            "form_name": "Wizard",
+            "max_controls": 1
+          }
+        },
+        {
+          "tool": "xlide_read_form",
+          "arguments": {
+            "file_path": "${fixture}",
+            "form_name": "Wizard",
+            "max_controls": 1,
+            "offset": "${step[1].next_offset}"
+          }
+        }
+      ],
+      "fixture": "workbook_with_a_form",
+      "expect": [
+        {
+          "path": "control_count",
+          "equals": 2
+        },
+        {
+          "path": "controls[0].name",
+          "equals": "Cancel"
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        }
+      ]
+    },
+    {
+      "id": "forms.form-pages-reach-later-designs",
+      "why": "A large form list can be read in pages without hiding later designs.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_form",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "create",
+            "form_name": "Second"
+          }
+        },
+        {
+          "tool": "xlide_list_forms",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_list_forms",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "offset": "${step[1].next_offset}"
+          }
+        }
+      ],
+      "fixture": "workbook_with_a_form",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "forms[0].name",
+          "equals": "Second"
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        }
+      ]
+    },
+    {
       "id": "forms.renaming-a-userforms-module-is-refused",
       "why": "Renaming only the module leaves a storage with no module, which the host does not show, and a module with no storage, which is a class. The form has silently gone and the file still opens, so nothing tells the user.",
       "requires": "files",
@@ -1759,6 +2649,65 @@
       ]
     },
     {
+      "id": "shapes.sheet-pages-reach-later-shapes",
+      "why": "A drawing layer with several shapes returns a next offset for one sheet.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "max_results": 1,
+            "offset": "${step[0].next_offset}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "shape_count",
+          "equals": 3
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "sheets[0].shapes",
+          "at_least": 1
+        },
+        {
+          "path": "next_offset",
+          "equals": 2
+        }
+      ]
+    },
+    {
+      "id": "shapes.offset-needs-one-sheet",
+      "why": "An offset without a sheet would ambiguously skip shapes on every sheet.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1
+          },
+          "error_contains": "Set sheet when using offset"
+        }
+      ],
+      "fixture": "shapes_workbook"
+    },
+    {
       "id": "shapes.a-macro-can-be-repointed-in-every-part-that-holds-it",
       "why": "A Forms button stores its macro twice, in its VML shape and in the sheet's controls entry, and Excel reads both. Writing one and not the other leaves a button whose behaviour depends on which copy Excel happens to trust.",
       "requires": "files",
@@ -1901,6 +2850,63 @@
         {
           "path": "applied",
           "contains": "fill"
+        }
+      ]
+    },
+    {
+      "id": "format-cells.merge-refuses-to-discard-content-without-opt-in",
+      "why": "A merge keeps only the top-left cell. Existing values or formulas in its other cells require an explicit overwrite decision before they are cleared.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "Keep",
+                "=1+1",
+                "Other"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_format_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1:C1",
+            "merge": "merge"
+          },
+          "error_contains": "allow_overwrite=true"
+        },
+        {
+          "tool": "xlide_format_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1:C1",
+            "merge": "merge",
+            "allow_overwrite": true
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "cells_cleared",
+          "equals": 2
+        },
+        {
+          "path": "formulas_cleared",
+          "equals": 1
+        },
+        {
+          "path": "saved",
+          "equals": true
         }
       ]
     },
@@ -2120,6 +3126,485 @@
       ]
     },
     {
+      "id": "list-procedures.reaches-the-second-page",
+      "why": "A long module's later procedures remain reachable after a bounded first page.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_procedures",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "offset": 1,
+            "max_results": 1
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "procedures[0].name",
+          "equals": "Greet"
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        }
+      ]
+    },
+    {
+      "id": "access-catalog.reaches-later-tables",
+      "why": "A database with system tables can list tables past the first page.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_access_catalog",
+          "arguments": {
+            "file_path": "${fixture}",
+            "include": "tables",
+            "include_system": true,
+            "offset": 1,
+            "max_results": 1
+          }
+        }
+      ],
+      "fixture": "access_database",
+      "expect": [
+        {
+          "path": "counts.tables",
+          "at_least": 2
+        },
+        {
+          "path": "tables",
+          "at_least": 1
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        }
+      ]
+    },
+    {
+      "id": "manage-table.list-reaches-the-second-page",
+      "why": "A bounded list returns a next offset so every item remains reachable.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "First",
+                "Second"
+              ],
+              [
+                1,
+                2
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_manage_table",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "add",
+            "sheet": "Sheet1",
+            "table_name": "FirstTable",
+            "cell_range": "A1:A2"
+          }
+        },
+        {
+          "tool": "xlide_manage_table",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "add",
+            "sheet": "Sheet1",
+            "table_name": "SecondTable",
+            "cell_range": "B1:B2"
+          }
+        },
+        {
+          "tool": "xlide_manage_table",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_manage_table",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1,
+            "max_results": 1
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "tables",
+          "at_least": 1
+        },
+        {
+          "path": "tables[0].name",
+          "equals": "SecondTable"
+        }
+      ]
+    },
+    {
+      "id": "manage-name.list-reaches-the-second-page",
+      "why": "A bounded list returns a next offset so every item remains reachable.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_name",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "add",
+            "name": "FirstName",
+            "refers_to": "Sheet1!$A$1"
+          }
+        },
+        {
+          "tool": "xlide_manage_name",
+          "arguments": {
+            "file_path": "${fixture}",
+            "action": "add",
+            "name": "SecondName",
+            "refers_to": "Sheet1!$B$1"
+          }
+        },
+        {
+          "tool": "xlide_manage_name",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1
+          }
+        },
+        {
+          "tool": "xlide_manage_name",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1,
+            "max_results": 1
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "names",
+          "at_least": 1
+        },
+        {
+          "path": "names[0].name",
+          "equals": "SecondName"
+        }
+      ]
+    },
+    {
+      "id": "manage-validation.list-reaches-the-second-page",
+      "why": "A bounded list returns a next offset so every item remains reachable.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_validation",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "add",
+            "cell_range": "C1:C2",
+            "formula1": "Yes,No"
+          }
+        },
+        {
+          "tool": "xlide_manage_validation",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "add",
+            "cell_range": "D1:D2",
+            "formula1": "Yes,No"
+          }
+        },
+        {
+          "tool": "xlide_manage_validation",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        },
+        {
+          "tool": "xlide_manage_validation",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1,
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "validations",
+          "at_least": 1
+        },
+        {
+          "path": "validations[0].ranges[0]",
+          "equals": "D1:D2"
+        }
+      ]
+    },
+    {
+      "id": "manage-conditional-format.list-reaches-the-second-page",
+      "why": "A bounded list returns a next offset so every item remains reachable.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_conditional_format",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "add",
+            "cell_range": "C1:C2",
+            "value": "1",
+            "fill_color": "FFC7CE"
+          }
+        },
+        {
+          "tool": "xlide_manage_conditional_format",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "add",
+            "cell_range": "D1:D2",
+            "value": "1",
+            "fill_color": "FFC7CE"
+          }
+        },
+        {
+          "tool": "xlide_manage_conditional_format",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        },
+        {
+          "tool": "xlide_manage_conditional_format",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1,
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "formats",
+          "at_least": 1
+        },
+        {
+          "path": "formats[0].range",
+          "equals": "D1:D2"
+        }
+      ]
+    },
+    {
+      "id": "manage-hyperlink.list-reaches-the-second-page",
+      "why": "A bounded list returns a next offset so every item remains reachable.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_hyperlink",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "add",
+            "cell_range": "E1",
+            "target": "https://example.com/E1"
+          }
+        },
+        {
+          "tool": "xlide_manage_hyperlink",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "add",
+            "cell_range": "E2",
+            "target": "https://example.com/E2"
+          }
+        },
+        {
+          "tool": "xlide_manage_hyperlink",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        },
+        {
+          "tool": "xlide_manage_hyperlink",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1,
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "hyperlinks",
+          "at_least": 1
+        },
+        {
+          "path": "hyperlinks[0].range",
+          "equals": "E2"
+        }
+      ]
+    },
+    {
+      "id": "manage-comment.list-reaches-the-second-page",
+      "why": "A bounded list returns a next offset so every item remains reachable.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_manage_comment",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "set",
+            "cell": "E1",
+            "text": "Note for E1"
+          }
+        },
+        {
+          "tool": "xlide_manage_comment",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "action": "set",
+            "cell": "E2",
+            "text": "Note for E2"
+          }
+        },
+        {
+          "tool": "xlide_manage_comment",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        },
+        {
+          "tool": "xlide_manage_comment",
+          "arguments": {
+            "file_path": "${fixture}",
+            "offset": 1,
+            "max_results": 1,
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "workbook",
+      "expect": [
+        {
+          "path": "count",
+          "equals": 2
+        },
+        {
+          "path": "offset",
+          "equals": 1
+        },
+        {
+          "path": "next_offset",
+          "type": "null"
+        },
+        {
+          "path": "comments",
+          "at_least": 1
+        },
+        {
+          "path": "comments[0].cell",
+          "equals": "E2"
+        }
+      ]
+    },
+    {
       "id": "git-changes.reports-a-modified-module-with-its-diff",
       "why": "git diff cannot answer this: an Office file is one binary blob, so a commit that changed a line and one that replaced the project look identical. Reading the blob at the revision and diffing the VBA inside it is the only way a workbook can be reviewed at all.",
       "requires": "git",
@@ -2274,8 +3759,46 @@
           "at_least": 320
         },
         {
+          "path": "next_offset",
+          "type": "number"
+        },
+        {
           "path": "note",
-          "contains": "are not"
+          "contains": "next page"
+        }
+      ]
+    },
+    {
+      "id": "bounds.module-pages-reach-past-the-bound",
+      "why": "A module after the first bounded page remains reachable by offset.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "offset": 318
+          }
+        },
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}",
+            "max_results": 1,
+            "offset": "${step[0].next_offset}"
+          }
+        }
+      ],
+      "fixture": "crowded_workbook",
+      "expect": [
+        {
+          "path": "modules[0].name",
+          "equals": "Mod316"
+        },
+        {
+          "path": "next_offset",
+          "type": "number"
         }
       ]
     },

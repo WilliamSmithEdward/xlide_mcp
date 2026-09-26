@@ -306,6 +306,138 @@ def test_the_access_catalog_reads_tables_and_queries(
 
     query = next(entry for entry in result["queries"] if entry["name"] == "AllOrders")
     assert "SELECT * FROM Orders" in query["sql"]
+    assert query["sql_truncated"] is False
+    assert query["sql_chars"] == len(query["sql"])
+
+
+def test_a_saved_access_query_can_be_read_in_character_pages(
+    call: Callable[..., Any], database: Path
+) -> None:
+    first = call(
+        "xlide_read_access_query", file_path=str(database), query_name="allorders",
+        max_chars=6,
+    )
+    assert first["query"] == "AllOrders"
+    assert first["sql"] == "SELECT"
+    assert first["next_offset"] == 6
+    assert first["content_token"].startswith("xlide1:")
+
+    second = call(
+        "xlide_read_access_query", file_path=str(database), query_name="AllOrders",
+        offset=first["next_offset"],
+    )
+    assert "SELECT * FROM Orders" in first["sql"] + second["sql"]
+    assert second["content_token"] == first["content_token"]
+    assert second["next_offset"] is None
+    assert second["total_chars"] == len(first["sql"] + second["sql"])
+
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_read_access_query", file_path=str(database), query_name="AllOrders",
+            offset=second["total_chars"] + 1,
+        )
+    assert "past the end" in refusal.value.message
+
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_read_access_query", file_path=str(database), query_name="Missing",
+        )
+    assert "AllOrders" in refusal.value.message
+
+
+def test_the_access_catalog_previews_long_query_sql() -> None:
+    from xlide_mcp.tools.catalog import _queries
+
+    class Query:
+        name = "Long"
+        sql = "X" * 9_000
+
+    class Handle:
+        def queries(self) -> list[Query]:
+            return [Query()]
+
+    shown, count, next_offset = _queries(Handle(), 0, 1)
+    assert count == 1
+    assert next_offset is None
+    assert len(shown[0]["sql"]) == 8_000
+    assert shown[0]["sql_chars"] == 9_000
+    assert shown[0]["sql_truncated"] is True
+
+
+def test_one_unreadable_saved_query_does_not_hide_the_catalog() -> None:
+    from xlide_mcp.tools.catalog import _queries
+
+    class BrokenQuery:
+        name = "Broken"
+
+        @property
+        def sql(self) -> str:
+            raise ValueError("invalid SQL record")
+
+    class GoodQuery:
+        name = "Good"
+        sql = "SELECT 1;"
+
+    class Handle:
+        def queries(self) -> list[Any]:
+            return [BrokenQuery(), GoodQuery()]
+
+    shown, count, next_offset = _queries(Handle(), 0, 2)
+    assert count == 2
+    assert next_offset is None
+    assert shown[0]["sql"] is None
+    assert shown[0]["sql_chars"] is None
+    assert shown[0]["sql_truncated"] is None
+    assert "invalid SQL record" in shown[0]["sql_error"]
+    assert shown[1]["sql"] == "SELECT 1;"
+
+
+def test_access_table_page_reads_only_its_requested_specs() -> None:
+    from xlide_mcp.tools.catalog import _tables
+
+    class Handle:
+        def __init__(self) -> None:
+            self.read_specs: list[str] = []
+
+        def table_names(self, *, include_system: bool) -> list[str]:
+            assert include_system is False
+            return [f"Table{index}" for index in range(5)]
+
+        def table_specs(self, name: str) -> tuple[list[Any], list[Any]]:
+            self.read_specs.append(name)
+            return [], []
+
+    handle = Handle()
+    shown, count, next_offset = _tables(handle, False, 2, 1)
+    assert count == 5
+    assert [entry["name"] for entry in shown] == ["Table2"]
+    assert next_offset == 3
+    assert handle.read_specs == ["Table2"]
+
+
+def test_access_query_page_reads_only_its_requested_sql() -> None:
+    from xlide_mcp.tools.catalog import _queries
+
+    read_sql: list[str] = []
+
+    class Query:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        @property
+        def sql(self) -> str:
+            read_sql.append(self.name)
+            return f"SELECT * FROM {self.name}"
+
+    class Handle:
+        def queries(self) -> list[Query]:
+            return [Query(f"Query{index}") for index in range(5)]
+
+    shown, count, next_offset = _queries(Handle(), 2, 1)
+    assert count == 5
+    assert [entry["name"] for entry in shown] == ["Query2"]
+    assert next_offset == 3
+    assert read_sql == ["Query2"]
 
 
 def test_system_objects_are_left_out_unless_asked_for(
@@ -322,6 +454,19 @@ def test_system_objects_are_left_out_unless_asked_for(
     )
     assert [t for t in with_system["tables"] if t["name"].startswith("MSys")]
     assert with_system["relationships"], "the MSys relationships are real and should show"
+
+    first = call(
+        "xlide_access_catalog", file_path=str(database), include="tables",
+        include_system=True, max_results=1,
+    )
+    assert first["counts"]["tables"] > 1
+    assert first["next_offsets"]["tables"] == 1
+    second = call(
+        "xlide_access_catalog", file_path=str(database), include="tables",
+        include_system=True, offset=first["next_offsets"]["tables"], max_results=1,
+    )
+    assert len(second["tables"]) == 1
+    assert second["tables"] != first["tables"]
 
 
 def test_the_catalog_can_be_narrowed(call: Callable[..., Any], database: Path) -> None:

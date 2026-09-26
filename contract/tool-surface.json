@@ -1,20 +1,20 @@
 {
   "contract_version": "1.1.0",
-  "digest": "sha256:ba6f659e1178374df0f275fded3ed7c3a8899b59c4a12701f8fca2ed3a693ae8",
+  "digest": "sha256:f1670a45020a2c0fcc13d3cc6a36a741aeca6161867e09f38dc8ec5ebe657069",
   "generated_with": {
     "upstream": {
       "pyOfficeEditor": "0.3.0",
       "pyOpenVBA": "6.1.2",
       "pyvbaanalysis": "2.2.1",
-      "pyvbaharness": "1.1.5"
+      "pyvbaharness": "not installed"
     }
   },
   "reference_implementation": "python",
   "server": {
-    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files, and the document around them: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing the file needs no Office installation and works on any platform. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It lists modules, forms, queries and sheets, and says whether the project is password-protected or digitally signed.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over. To open or close a file in the user's own application, use xlide_open_in_app and xlide_close_in_app, which act on that one file.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, writing to a project that is password-protected or digitally signed, closing a file that holds unsaved work, or ending a process. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application, and the refusal names what holds it. xlide_is_open says whether that copy is read-only and whether it holds unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and reopened around the write; anything else is the user's to close.\n- A macro-enabled file saved before its first macro has no VBA project. That is normal: the listings answer empty, and xlide_write_module gives the file its project.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, has no current result in the file until Excel next opens it. xlide_read_cells with calculate=true works results out with a formula engine and names any cell it could not; report those as Excel's cached values.\n- When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the user can see the change and keep or revert it in XLIDE's project tree. Say so.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
+    "instructions": "Read and change the VBA, UserForms, Power Query and worksheet cells inside Office files, and the document around them: Excel (.xlsm, .xlsb, .xlam, .xls), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm) and Access (.accdb, .mdb), plus Power Query and sheets in plain .xlsx, and Visual Basic 6 projects (.vbp).\n\nA .vbp's modules are files on disk, so its writes land as they are made and it is never protected or signed. Everything else works the same way.\n\nReading and writing VBA, UserForms, Power Query and cells in .xlsx, .xlsm and .xlam needs no Office installation. Reading cells in .xlsb and .xls needs Windows with Excel; writing cells in .xlsb does too. This server does not write .xls cells. Running macros and tests needs Windows with the application installed.\n\nWorkflow\n\n1. xlide_list_projects when the user has not named a file. Pass absolute paths after that.\n2. xlide_project_info once per file. It summarizes the parts this server can read and says whether the VBA project is protected or signed. Check any forms_error, power_query.error or sheets_note before treating a missing list as empty.\n3. xlide_read_module to read. Its result carries a content_token; pass that back as expected_content_token to xlide_write_module and the write is refused if the module changed after your read.\n4. xlide_write_module to change code. It replaces the module's whole source, so send all of it. The attribute header is managed for you: send the body.\n5. xlide_analyze after every VBA change. Treat any error-severity problem as a build failure: fix it and analyze again until it is clean.\n6. xlide_run_tests when the file has tests and the change touches tested code.\n\nRules\n\n- The VBA inside the file is the only source of truth for it. Exported .bas and .cls files are copies and go stale. Never report a module as changed because you wrote an exported copy.\n- Do not unzip, rezip or hex-edit an Office file, and do not touch vbaProject.bin. Those edits corrupt the file or drop its code silently.\n- Do not drive Office with COM automation of your own. xlide_run_macro and xlide_run_tests use an instance this server owns and holds a deadline over. To open or close a file in the user's own application, use xlide_open_in_app and xlide_close_in_app, which act on that one file.\n- Read the code you are about to change, and change only what the task needs.\n- Ask the user before anything hard to undo: deleting a module, a form or a query, overwriting cells that hold data, writing to a project that is password-protected or digitally signed, closing a file that holds unsaved work, or ending a process. A signed project loses its signature on any macro change.\n- Keep VBA source ASCII unless the user asks otherwise.\n- To show the user what you changed, use the diff a write returns: it is taken from the file read back after saving, so it is what the file now holds rather than what you meant to write. xlide_git_changes does the same against a git revision, and covers Power Query as well as VBA. Neither compares cell values.\n- A write fails while the file is open in its Office application, and the refusal names what holds it. xlide_is_open says whether that copy is read-only and whether it holds unsaved work. A read-only copy with nothing unsaved loses nothing by being closed and reopened around the write; anything else is the user's to close.\n- A macro-enabled file saved before its first macro has no VBA project. That is normal: the listings answer empty, and xlide_write_module gives the file its project.\n- Access runs its compiled project, so a module written here takes effect when Access next opens the database.\n- Cell values read from the file are what Excel last calculated. A formula you write, and anything depending on a cell you write, has no current result in the file until Excel next opens it. xlide_read_cells with calculate=true works results out with a formula engine and names any cell it could not; report those as Excel's cached values.\n- When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the user can see the change and keep or revert it in XLIDE's project tree. Say so.\n- Report what you changed, how you verified it, and what the user still has to do.\n",
     "name": "xlide"
   },
-  "tool_count": 58,
+  "tool_count": 60,
   "tools": [
     {
       "annotations": {
@@ -22,7 +22,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists what an Access database holds besides its code: tables with their columns, saved queries with their SQL, and the relationships between tables. An .accdb is an application rather than a document, and the VBA in it is written against these, so reading the modules alone shows half of it. Access files only.",
+      "description": "Lists what an Access database holds besides its code: tables with their columns, saved queries with their SQL, and the relationships between tables. An .accdb is an application rather than a document, and the VBA in it is written against these, so reading the modules alone shows half of it. Use include with offset and next_offsets to page through a large catalog. Long query SQL is previewed; use xlide_read_access_query for the whole text. If one query's SQL cannot be read, that entry has sql=null and sql_error rather than hiding the catalog. Access files only.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -41,6 +41,21 @@
             "description": "Include the MSys tables and relationships Access keeps its own objects in. Off by default: every database has them, and listing them buries the few that are about the user's data.",
             "title": "Include System",
             "type": "boolean"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Most items per list.",
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Items to skip in each list.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -150,13 +165,21 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Runs static analysis over every VBA module in an Office file and returns the problems with module, line, column, code and message. Needs no Office installation and runs nothing. Each file is measured against its own host's object model, so Word code is never judged by Excel's surface, and a Visual Basic 6 project against no host at all, because its code does not run in one. Call this after every VBA change and treat any problem at error severity as a build failure: fix it and analyze again until it is clean. Warnings are worth reading; some are style, some are the bug.",
+      "description": "Runs static analysis over every VBA module in an Office file and returns the problems with module, line, column, code and message. Needs no Office installation and runs nothing. Each file is measured against its own host's object model, so Word code is never judged by Excel's surface, and a Visual Basic 6 project against no host at all, because its code does not run in one. Call this after every VBA change and treat any problem at error severity as a build failure: fix it and analyze again until it is clean. Warnings are worth reading; some are style, some are the bug. Use offset and next_offset to read later findings.",
       "input_schema": {
         "properties": {
           "file_path": {
             "description": "Absolute path to the Office file.",
             "title": "File Path",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Return at most this many findings.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
           },
           "min_severity": {
             "default": "information",
@@ -169,6 +192,13 @@
             "description": "Report only this module's problems. The whole project is still analyzed, so cross-module references still resolve.",
             "title": "Module Name",
             "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many matching findings.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -186,7 +216,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Runs static analysis over VBA source you are holding, before it is written to a file. Use it to check code you have just generated: it costs nothing, needs no file, and catches the compile errors that would otherwise surface in front of the user. Pass host so the code is measured against the right object model, and file_path instead if the code is destined for a file that already exists, which resolves calls into the rest of that project.",
+      "description": "Runs static analysis over VBA source you are holding, before it is written to a file. Use it to check code you have just generated: it costs nothing, needs no file, and catches the compile errors that would otherwise surface in front of the user. Pass host so the code is measured against the right object model, and file_path instead if the code is destined for a file that already exists, which resolves calls into the rest of that project. Use offset and next_offset to read later findings from a long result.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -207,11 +237,26 @@
             "title": "Kind",
             "type": "string"
           },
+          "max_results": {
+            "default": 300,
+            "description": "Return at most this many findings.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
           "module_name": {
             "default": "Module1",
             "description": "Name to report problems against.",
             "title": "Module Name",
             "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many findings.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           },
           "source": {
             "description": "The VBA source to check.",
@@ -331,18 +376,18 @@
         "idempotent": false,
         "read_only": false
       },
-      "description": "Permanently deletes a VBA module from an Office file and saves it. There is no undo: ask the user first, and read the module before deleting it so its code can be put back if they change their mind. Document modules cannot be deleted.",
+      "description": "Permanently deletes a VBA module from an Office file and saves it. There is no undo: ask the user first, and read the module before deleting it so its code can be put back if they change their mind. Document modules cannot be deleted. For Excel, the write is refused if the server cannot check whether a shape still calls the module.",
       "input_schema": {
         "properties": {
           "allow_invalidate_signature": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
             "title": "Allow Invalidate Signature",
             "type": "boolean"
           },
           "allow_protected": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
             "title": "Allow Protected",
             "type": "boolean"
           },
@@ -404,13 +449,13 @@
           },
           "allow_invalidate_signature": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
             "title": "Allow Invalidate Signature",
             "type": "boolean"
           },
           "allow_protected": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
             "title": "Allow Protected",
             "type": "boolean"
           },
@@ -503,6 +548,99 @@
     },
     {
       "annotations": {
+        "destructive": true,
+        "idempotent": true,
+        "read_only": false
+      },
+      "description": "Replaces, inserts or deletes several line ranges in one existing VBA module and saves once. Lines are 1-based against the original source returned by xlide_read_module, without the attribute header. Each edit has start_line, end_line inclusive, and replacement text. For insertion, set end_line to start_line - 1; an empty replacement deletes the named lines. Ranges must not overlap. expected_content_token is required and refuses a stale edit. Set preview_only to validate the edits and see the proposed diff without saving. An applied edit includes the read-back diff and new token. Analyze the file afterward.",
+      "input_schema": {
+        "$defs": {
+          "ModuleEdit": {
+            "properties": {
+              "end_line": {
+                "description": "Last original line, inclusive. Use start_line - 1 to insert.",
+                "minimum": 0,
+                "title": "End Line",
+                "type": "integer"
+              },
+              "replacement": {
+                "description": "Complete replacement text for these lines.",
+                "title": "Replacement",
+                "type": "string"
+              },
+              "start_line": {
+                "description": "First original line to replace, 1-based.",
+                "minimum": 1,
+                "title": "Start Line",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "start_line",
+              "end_line",
+              "replacement"
+            ],
+            "title": "ModuleEdit",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "allow_invalidate_signature": {
+            "default": false,
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
+            "title": "Allow Invalidate Signature",
+            "type": "boolean"
+          },
+          "allow_protected": {
+            "default": false,
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
+            "title": "Allow Protected",
+            "type": "boolean"
+          },
+          "edits": {
+            "description": "Line edits against the original module body, applied together.",
+            "items": {
+              "$ref": "#/$defs/ModuleEdit"
+            },
+            "title": "Edits",
+            "type": "array"
+          },
+          "expected_content_token": {
+            "description": "Content token from the last read; required.",
+            "title": "Expected Content Token",
+            "type": "string"
+          },
+          "file_path": {
+            "description": "Absolute path to the Office file.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "module_name": {
+            "description": "Existing module to edit.",
+            "title": "Module Name",
+            "type": "string"
+          },
+          "preview_only": {
+            "default": false,
+            "description": "Show the proposed diff without saving.",
+            "title": "Preview Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "file_path",
+          "module_name",
+          "edits",
+          "expected_content_token"
+        ],
+        "title": "edit_moduleArguments",
+        "type": "object"
+      },
+      "name": "xlide_edit_module",
+      "title": "Edit module lines"
+    },
+    {
+      "annotations": {
         "destructive": false,
         "idempotent": true,
         "read_only": true
@@ -549,7 +687,7 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Writes every VBA module in an Office file to a folder as .bas and .cls files, for source control or review. Previews by default: it reports what it would create, update and leave alone, and writes nothing until apply=true. Only when the user asks for it. The exported files are copies: editing one changes nothing inside the Office file until xlide_import_modules runs.",
+      "description": "Writes every VBA module in an Office file to a folder as .bas and .cls files, for source control or review. Previews by default: it reports what it would create, update and leave alone, and writes nothing until apply=true. Only when the user asks for it. Applying a plan leaves unchanged files alone. The exported files are copies: editing one changes nothing inside the Office file until xlide_import_modules runs.",
       "input_schema": {
         "properties": {
           "apply": {
@@ -591,9 +729,15 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Changes how a range looks: bold and font, fill colour, borders, alignment, number format, and merging. Only what you pass is changed, so each cell keeps the rest of its own format and making a header row bold does not flatten the number formats under it. Colours are RRGGBB or AARRGGBB hex without a leading hash. A number format is an Excel format code such as '#,##0.00' or 'yyyy-mm-dd'; that code is also what decides whether a number is shown as a date. Works on .xlsx, .xlsm and .xlam.",
+      "description": "Changes how a range looks: bold and font, fill colour, borders, alignment, number format, and merging. Only what you pass is changed, so each cell keeps the rest of its own format and making a header row bold does not flatten the number formats under it. Colours are RRGGBB or AARRGGBB hex without a leading hash. A number format is an Excel format code such as '#,##0.00' or 'yyyy-mm-dd'; that code is also what decides whether a number is shown as a date. Merging clears values and formulas outside the top-left cell; allow_overwrite is required when that would discard content. Works on .xlsx, .xlsm and .xlam.",
       "input_schema": {
         "properties": {
+          "allow_overwrite": {
+            "default": false,
+            "description": "For merge: allow clearing values or formulas in cells other than the top-left cell. Ask the user first.",
+            "title": "Allow Overwrite",
+            "type": "boolean"
+          },
           "bold": {
             "anyOf": [
               {
@@ -801,18 +945,18 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Reads .bas and .cls files from a folder back into an Office file's VBA project and saves it. Previews by default: it reports which modules would change and by how much, and writes nothing until apply=true. A file whose name matches no module creates one. Document modules such as ThisWorkbook are written but never created. After applying, call xlide_analyze.",
+      "description": "Reads .bas and .cls files from a folder back into an Office file's VBA project and saves it. Previews by default: it reports which modules would change and by how much, and writes nothing until apply=true. A file whose name matches no module creates one. Document modules such as ThisWorkbook are written but never created. Applying an unchanged plan skips the save. After a change, call xlide_analyze.",
       "input_schema": {
         "properties": {
           "allow_invalidate_signature": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
             "title": "Allow Invalidate Signature",
             "type": "boolean"
           },
           "allow_protected": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
             "title": "Allow Protected",
             "type": "boolean"
           },
@@ -873,13 +1017,28 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the UserForms in an Office file, or the forms and reports in an Access database, with each one's control count and, for Access, the sections a control can go in. A design's code is a module of the same name, read with xlide_read_module.",
+      "description": "Lists the UserForms in an Office file, or the forms and reports in an Access database, with each one's control count and, for Access, the sections a control can go in. A design's code is a module of the same name, read with xlide_read_module. An unreadable report collection is a failure, not an empty list. An unreadable design's sections are marked unknown with sections_error. Use offset and next_offset to read large form lists in pages.",
       "input_schema": {
         "properties": {
           "file_path": {
             "description": "Absolute path to the Office file.",
             "title": "File Path",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Return at most this many forms.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many forms before a page.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -897,13 +1056,28 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the VBA modules in an Office file: name, kind (standard, class, document or userform), line count, and a content_token to pass to a guarded write. xlide_project_info returns this and more in one call; use this one when the file is already known and only the module list is wanted.",
+      "description": "Lists the VBA modules in an Office file: name, kind (standard, class, document or userform), line count, and a content_token to pass to a guarded write. xlide_project_info returns this and more in one call; use this one when the file is already known and only the module list is wanted. Use offset and next_offset to read large projects in pages.",
       "input_schema": {
         "properties": {
           "file_path": {
             "description": "Absolute path to the Office file.",
             "title": "File Path",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Return at most this many modules.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many modules before a page.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -921,7 +1095,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the Sub, Function and Property procedures in one module, with each one's kind, scope, line number and signature. Use it to find where to change something without reading a long module in full.",
+      "description": "Lists the Sub, Function and Property procedures in one module, with each one's kind, scope, line number and signature. The module's content_token can guard an xlide_edit_module call. Use it to find where to change something without reading a long module in full. Use offset and next_offset to page through a module with many procedures.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -929,10 +1103,25 @@
             "title": "File Path",
             "type": "string"
           },
+          "max_results": {
+            "default": 300,
+            "description": "Most procedures to return.",
+            "maximum": 1000,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
           "module_name": {
             "description": "Module name, matched without case.",
             "title": "Module Name",
             "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Procedures to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -951,9 +1140,24 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Finds the Office files in this server's workspace and returns their absolute paths, host application and whether their VBA can be opened. Call this first when the user has not named a file. Covers Excel (.xlsm, .xlsb, .xlam, .xls, and .xlsx for Power Query and sheets), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm), Access (.accdb, .mdb), and Visual Basic 6 projects (.vbp, whose modules are the files its manifest names). Files whose extension is recognized but not openable are listed with the reason, so a template or add-in is not silently missing.",
+      "description": "Finds the Office files in this server's workspace and returns their absolute paths, host application and whether their VBA can be opened. Call this first when the user has not named a file. Covers Excel (.xlsm, .xlsb, .xlam, .xls, and .xlsx for Power Query and sheets), Word (.docm, .dotm, .doc), PowerPoint (.pptm, .potm), Access (.accdb, .mdb), and Visual Basic 6 projects (.vbp, whose modules are the files its manifest names). Files whose extension is recognized but not openable are listed with the reason, so a template or add-in is not silently missing. Use offset and next_offset to read large workspaces in pages.",
       "input_schema": {
         "properties": {
+          "max_results": {
+            "default": 2000,
+            "description": "Return at most this many files.",
+            "maximum": 2000,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many files before a page.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "subfolder": {
             "default": "",
             "description": "Limit the search to this folder. Empty searches every workspace root.",
@@ -973,13 +1177,28 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the Power Query queries in an Excel workbook: name, group, description, where each loads, and its applied step names. Queries live outside the VBA project, so a plain .xlsx has them too. Call this when asked what a workbook does; a workbook with no macros can still be doing most of its work here.",
+      "description": "Lists the Power Query queries in an Excel workbook: name, group, description, where each loads, and its applied step names. If the M formula cannot be parsed, steps is null with steps_error rather than an empty list. Queries live outside the VBA project, so a plain .xlsx has them too. Call this when asked what a workbook does; a workbook with no macros can still be doing most of its work here. Use offset and next_offset to read large query lists in pages.",
       "input_schema": {
         "properties": {
           "file_path": {
             "description": "Absolute path to the Excel workbook.",
             "title": "File Path",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Return at most this many queries.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many queries before a page.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -1021,13 +1240,28 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists what sits on a worksheet's drawing layer: buttons, form controls, AutoShapes, text boxes, pictures, charts and groups, each with the cells it covers, its position in points and, where it has one, the macro a click runs. A form control also carries what it holds: a check box's state, a list's chosen item, a spinner's value and bounds, the cell it is linked to. Call it when asked how a workbook is started, or before renaming a Sub: a button's OnAction names a procedure and nothing rewrites it. ActiveX controls are listed but have no macro; their code is event procedures in the sheet's module.",
+      "description": "Lists what sits on a worksheet's drawing layer: buttons, form controls, AutoShapes, text boxes, pictures, charts and groups, each with the cells it covers, its position in points and, where it has one, the macro a click runs. A form control also carries what it holds: a check box's state, a list's chosen item, a spinner's value and bounds, the cell it is linked to. Call it when asked how a workbook is started, or before renaming a Sub: a button's OnAction names a procedure and nothing rewrites it. ActiveX controls are listed but have no macro; their code is event procedures in the sheet's module. For a crowded sheet, use sheet with offset and next_offset to read later shapes.",
       "input_schema": {
         "properties": {
           "file_path": {
             "description": "Absolute path to the Excel file.",
             "title": "File Path",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Return at most this many per sheet.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many shapes on one sheet.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           },
           "sheet": {
             "default": "",
@@ -1051,7 +1285,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Lists the worksheets in an Excel file with their used ranges, whether each is hidden, and the pivot tables on each, the chart sheets, and the workbook's named ranges. Call this before reading cells, so the range you ask for is one that holds data. Works on .xlsx, .xlsm and .xlam; a .xlsb or .xls keeps its grid in a binary format, and Excel answers for those on Windows.",
+      "description": "Lists the worksheets in an Excel file with their used ranges, whether each is hidden, and the pivot tables on each, the chart sheets, and the workbook's named ranges. Call this before reading cells, so the range you ask for is one that holds data. On .xlsx, .xlsm and .xlam the file also supplies pivot tables, chart sheets and named ranges. For .xlsb and .xls, Windows with Excel is required; that path surveys sheet names, used ranges and visibility only. Unreadable visibility or pivot metadata is marked unknown with hidden_error or pivot_tables_error. A malformed Excel survey is refused rather than returned as a partial sheet list.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -1082,9 +1316,16 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Reads a module's text as the running editor holds it, including edits the user has not saved. This is the one read that can differ from xlide_read_module, and the difference is exactly the user's unsaved work. Use it to see what they are actually working on; use xlide_read_module for what is in the file. surface_only=true reads the modern editor's own copy instead, which exists only for a module the user has open in a tab.",
+      "description": "Reads a module's text as the running editor holds it, including edits the user has not saved. This is the one read that can differ from xlide_read_module, and the difference is exactly the user's unsaved work. Use it to see what they are actually working on; use xlide_read_module for what is in the file. surface_only=true reads the modern editor's own copy instead, which exists only for a module the user has open in a tab. start_line and end_line read a slice of long live source; content_token describes the whole live module.",
       "input_schema": {
         "properties": {
+          "end_line": {
+            "default": 0,
+            "description": "Last source line. 0 means the end.",
+            "minimum": 0,
+            "title": "End Line",
+            "type": "integer"
+          },
           "module_name": {
             "description": "Module name as the editor shows it.",
             "title": "Module Name",
@@ -1101,6 +1342,13 @@
             "description": "Which project, when two documents are open and both hold a module of this name.",
             "title": "Project",
             "type": "string"
+          },
+          "start_line": {
+            "default": 0,
+            "description": "First source line. 0 means the start.",
+            "minimum": 0,
+            "title": "Start Line",
+            "type": "integer"
           },
           "surface_only": {
             "default": false,
@@ -1229,6 +1477,21 @@
             "title": "Kind",
             "type": "string"
           },
+          "max_results": {
+            "default": 300,
+            "description": "For list: most comments to return.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "For list: comments to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "resolved": {
             "default": true,
             "description": "For resolve: false opens a thread again.",
@@ -1319,6 +1582,21 @@
             "description": "For expression: a formula for the range's top-left cell.",
             "title": "Formula",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "For list: most to return.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "For list: format ranges to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           },
           "operator": {
             "default": "greaterThan",
@@ -1466,13 +1744,13 @@
           },
           "allow_invalidate_signature": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
             "title": "Allow Invalidate Signature",
             "type": "boolean"
           },
           "allow_protected": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
             "title": "Allow Protected",
             "type": "boolean"
           },
@@ -1566,6 +1844,21 @@
             "title": "Location",
             "type": "string"
           },
+          "max_results": {
+            "default": 300,
+            "description": "For list: most links to return.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "For list: links to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "sheet": {
             "description": "Worksheet name, matched without case.",
             "title": "Sheet",
@@ -1600,7 +1893,7 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Lists, adds or removes a workbook's defined names. A defined name is what lets a formula say TaxRate rather than Config!$B$7, and VBA reads them too, so renaming or removing one can break code as well as formulas. action='list' changes nothing. refers_to is a formula, so it needs its sheet and its dollar signs: Data!$A$1:$A$50.",
+      "description": "Lists, adds or removes a workbook's defined names. A defined name is what lets a formula say TaxRate rather than Config!$B$7, and VBA reads them too, so removing one can break code as well as formulas. action='list' changes nothing. For a range, qualify refers_to with its sheet and use absolute addresses to avoid following the active sheet or moving with a copied formula, for example Data!$A$1:$A$50.",
       "input_schema": {
         "properties": {
           "action": {
@@ -1614,11 +1907,26 @@
             "title": "File Path",
             "type": "string"
           },
+          "max_results": {
+            "default": 300,
+            "description": "For list: most names to return.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
           "name": {
             "default": "",
             "description": "For add and remove: the defined name.",
             "title": "Name",
             "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "description": "For list: names to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           },
           "refers_to": {
             "default": "",
@@ -1658,13 +1966,13 @@
           },
           "allow_invalidate_signature": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
             "title": "Allow Invalidate Signature",
             "type": "boolean"
           },
           "allow_protected": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
             "title": "Allow Protected",
             "type": "boolean"
           },
@@ -1972,6 +2280,21 @@
             "title": "File Path",
             "type": "string"
           },
+          "max_results": {
+            "default": 500,
+            "description": "For list: most tables to return.",
+            "maximum": 500,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "For list: tables to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
           "sheet": {
             "default": "",
             "description": "Worksheet. Empty lists every sheet's tables.",
@@ -2055,6 +2378,21 @@
             "description": "whole, decimal, list, date, time, textLength or custom.",
             "title": "Kind",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "For list: most to return.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "For list: validations to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           },
           "operator": {
             "default": "between",
@@ -2156,7 +2494,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Everything about one Office file in a single call: its VBA modules with kinds and line counts, its UserForms, its Power Query queries, its worksheets with used ranges and named ranges, and whether the VBA project is password-protected or digitally signed. has_vba_project is false for a macro-enabled file saved before its first macro, which is normal: the first xlide_write_module gives it a project. Call this once per file before working on it. Each module carries a content_token for a guarded write.",
+      "description": "A summary of one Office file in a single call: its VBA modules with kinds and line counts, its UserForms, its Power Query queries, its worksheets with used ranges and named ranges, and whether the VBA project is password-protected or digitally signed. has_vba_project is false for a macro-enabled file saved before its first macro, which is normal: the first xlide_write_module gives it a project. Call this once per file before working on it. Each module carries a content_token for a guarded write. For .xlsb and .xls sheet details, call xlide_list_sheets on Windows with Excel. An unreadable form or query summary is reported as unknown rather than empty.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -2180,12 +2518,57 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Reads a range of cells from a worksheet and returns a grid of values, formulas, both, or the text each cell shows under its number format. Values are what Excel last calculated and stored, so a formula whose inputs changed outside Excel shows its old result; calculate=true works every formula out first with pyOfficeEditor's formula engine, in memory, and names any cell it could not work out. Ask for formulas to understand what a sheet computes, and values for what it shows. At most 20,000 cells per call.",
+      "description": "Reads the SQL of one saved query in an Access database. Use it after xlide_access_catalog when a query's SQL was previewed. offset and max_chars read long SQL in character slices; next_offset points to the next slice. content_token describes the whole SQL, so compare it across pages if the database may have changed. Access files only.",
+      "input_schema": {
+        "properties": {
+          "file_path": {
+            "description": "Absolute path to the Access database.",
+            "title": "File Path",
+            "type": "string"
+          },
+          "max_chars": {
+            "default": 20000,
+            "description": "Most SQL characters to return.",
+            "maximum": 40000,
+            "minimum": 1,
+            "title": "Max Chars",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Characters to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "query_name": {
+            "description": "Saved query name, matched without case.",
+            "title": "Query Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path",
+          "query_name"
+        ],
+        "title": "read_access_queryArguments",
+        "type": "object"
+      },
+      "name": "xlide_read_access_query",
+      "title": "Read Access saved query"
+    },
+    {
+      "annotations": {
+        "destructive": false,
+        "idempotent": true,
+        "read_only": true
+      },
+      "description": "Reads a range of cells from a worksheet and returns a grid of values, formulas, both, or the text each cell shows under its number format. On .xlsx, .xlsm and .xlam, values are what Excel last calculated and stored; calculate=true works formulas out in memory with pyOfficeEditor's engine and names cells it could not work out. A failed formatted or rich-text read names the cell and refuses rather than returning an empty value. On .xlsb and .xls, Windows with Excel is required and only calculated values are available, not formulas or formatted text. A partial grid from Excel is refused. At most 20,000 cells per call.",
       "input_schema": {
         "properties": {
           "calculate": {
             "default": false,
-            "description": "Work every formula out before reading, with the formula engine. The file is not changed. Use it after writing inputs, to see the results now.",
+            "description": "For .xlsx, .xlsm and .xlam, work formulas out in memory before reading. The file is not changed. Binary .xlsb and .xls reads use Excel instead.",
             "title": "Calculate",
             "type": "boolean"
           },
@@ -2235,7 +2618,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Reads one form's design: every control with its name, type, the container it sits in, and the properties the developer set. Properties left at their default are not stored and so are not listed. Use it to understand a form's layout, or to see which control an event procedure belongs to.",
+      "description": "Reads one form's design: every control with its name, type, the container it sits in, and the properties the developer set. Properties left at their default are not stored and so are not listed. A property read failure appears as _read_error, not an empty property set; unreadable sections have sections_error. Use offset and next_offset to read large forms in pages. Use it to understand a form's layout, or to see which control an event procedure belongs to.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -2253,6 +2636,21 @@
             "description": "Include each control's set properties. Off gives just the tree.",
             "title": "Include Properties",
             "type": "boolean"
+          },
+          "max_controls": {
+            "default": 300,
+            "description": "Return at most this many controls.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Controls",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many controls before a page.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -2271,7 +2669,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "The canonical way to read VBA. Returns a module's source as the VBA editor shows it, with the attribute header stripped, plus a content_token. Pass that token back as expected_content_token when you write, and the write is refused if anything changed the module in between. start_line and end_line read a slice of a long module; both are 1-based and inclusive.",
+      "description": "The canonical way to read VBA. Returns a module's source as the VBA editor shows it, with the attribute header stripped, plus a content_token. Pass that token back as expected_content_token when you write, and the write is refused if anything changed the module in between. start_line and end_line read a slice of a long module; both are 1-based and inclusive. line_ranges reads several slices in one call, with each pair [first, last] using body line numbers.",
       "input_schema": {
         "properties": {
           "end_line": {
@@ -2291,6 +2689,25 @@
             "description": "Include the Attribute VB_* header. Off by default: the header is managed for you on write, and editing it by hand is how a module loses its binding to a sheet or a form.",
             "title": "Include Header",
             "type": "boolean"
+          },
+          "line_ranges": {
+            "anyOf": [
+              {
+                "items": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional list of [first, last] inclusive 1-based line ranges.",
+            "title": "Line Ranges"
           },
           "module_name": {
             "description": "Module name, matched without case.",
@@ -2321,9 +2738,16 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Reads one query's M formula, with its description, group, load target and refresh settings. The formula is the whole let ... in expression as the Advanced Editor shows it.",
+      "description": "Reads one query's M formula, with its description, group, load target and refresh settings. The formula is the let ... in expression as the Advanced Editor shows it. start_line and end_line read a slice of a long formula; the content_token always describes the whole query. If applied steps cannot be read, steps is null and steps_error gives the reason; the M formula remains available.",
       "input_schema": {
         "properties": {
+          "end_line": {
+            "default": 0,
+            "description": "Last formula line. 0 means the end.",
+            "minimum": 0,
+            "title": "End Line",
+            "type": "integer"
+          },
           "file_path": {
             "description": "Absolute path to the Excel workbook.",
             "title": "File Path",
@@ -2333,6 +2757,13 @@
             "description": "Query name, matched without case.",
             "title": "Query Name",
             "type": "string"
+          },
+          "start_line": {
+            "default": 0,
+            "description": "First formula line. 0 means the start.",
+            "minimum": 0,
+            "title": "Start Line",
+            "type": "integer"
           }
         },
         "required": [
@@ -2356,13 +2787,13 @@
         "properties": {
           "allow_invalidate_signature": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a change that removes the VBA project's digital signature, where applicable. Set true only after the user agrees.",
             "title": "Allow Invalidate Signature",
             "type": "boolean"
           },
           "allow_protected": {
             "default": false,
-            "description": "Ask the user first.",
+            "description": "Permit saving a password-protected VBA project. Set true only after the user agrees.",
             "title": "Allow Protected",
             "type": "boolean"
           },
@@ -2596,7 +3027,7 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Searches every module's source in an Office file and returns each match with its module, line number and the line itself. Use it to find where a name is declared or used before changing it. Plain text by default; set is_regex for a Python regular expression.",
+      "description": "Searches every module's source in an Office file and returns each match with its module, line number and the line itself. Use it to find where a name is declared or used before changing it. content_tokens maps returned module names to tokens for guarded xlide_edit_module calls without a separate read. Use offset and next_offset to page through broad searches; total_match_count counts all matches. Plain text by default; set is_regex for a Python regular expression.",
       "input_schema": {
         "properties": {
           "file_path": {
@@ -2618,10 +3049,17 @@
           },
           "max_results": {
             "default": 200,
-            "description": "Stop after this many matches.",
+            "description": "Return at most this many matches.",
             "maximum": 2000,
             "minimum": 1,
             "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Skip this many matches before a page.",
+            "minimum": 0,
+            "title": "Offset",
             "type": "integer"
           },
           "query": {
@@ -2688,13 +3126,28 @@
         "idempotent": true,
         "read_only": true
       },
-      "description": "Checks a file's VBA project for structural problems: records that disagree with each other, a module the directory names but the container does not hold, and the like. This is about the container, not about the code; use xlide_analyze for the code. Worth calling before risky work on an old or repaired file.",
+      "description": "Checks a file's VBA project for structural problems: records that disagree with each other, a module the directory names but the container does not hold, and the like. This is about the container, not about the code; use xlide_analyze for the code. Worth calling before risky work on an old or repaired file. Use offset and next_offset to read later problems from a damaged file.",
       "input_schema": {
         "properties": {
           "file_path": {
             "description": "Absolute path to the Office file.",
             "title": "File Path",
             "type": "string"
+          },
+          "max_results": {
+            "default": 300,
+            "description": "Most problems to return.",
+            "maximum": 300,
+            "minimum": 1,
+            "title": "Max Results",
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Problems to skip.",
+            "minimum": 0,
+            "title": "Offset",
+            "type": "integer"
           }
         },
         "required": [
@@ -2712,9 +3165,15 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Writes a rectangular block of values and formulas into a worksheet, starting at one cell, and saves the file. Each row of data is a row of the sheet. A string starting with '=' is written as a formula, as you would type it into Excel 365 with no _xlfn prefixes; anything else is a value. A cell given as {\"rich_text\": [{\"text\": \"Total \", \"bold\": true}, {\"text\": \"42\"}]} is text in more than one font. A value written over a formula removes that formula, which is what typing into the cell does. Only the rows you touch are rewritten, so charts, styles, pivot caches and the VBA project are untouched. Ask the user before overwriting cells that hold data. The file keeps no calculated result until Excel next opens it; xlide_read_cells with calculate=true works the results out now.",
+      "description": "Writes a rectangular block of values and formulas into a worksheet, starting at one cell, and saves the file. Each row of data is a row of the sheet. A string starting with '=' is written as a formula, as you would type it into Excel 365 with no _xlfn prefixes; anything else is a value. A cell given as {\"rich_text\": [{\"text\": \"Total \", \"bold\": true}, {\"text\": \"42\"}]} is text in more than one font. A value written over a formula removes that formula, which is what typing into the cell does. On .xlsx, .xlsm and .xlam, only the touched worksheet rows are rewritten; their cached formula results remain stale until Excel opens the file or xlide_read_cells calculates them in memory. Writing .xlsb cells needs Windows with Excel, which recalculates and saves the workbook. Writing .xls cells is not offered. Cells that hold data are refused until allow_overwrite=true; ask the user first.",
       "input_schema": {
         "properties": {
+          "allow_overwrite": {
+            "default": false,
+            "description": "Allow replacing cells that already hold data or formulas. Ask the user first. Without it, the write is refused before saving.",
+            "title": "Allow Overwrite",
+            "type": "boolean"
+          },
           "data": {
             "description": "Rows of cell values. Numbers, strings, booleans, null for empty, strings starting with '=' for formulas, and {\"rich_text\": [runs]} for text in several fonts, each run a text with any of bold, italic, strike, underline, size, font, color (RRGGBB) and script.",
             "items": {
@@ -2765,7 +3224,7 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "The canonical way to change VBA. Writes a module's source into the Office file and saves it. It replaces the module's whole source, so send all of it; send the body only, because the attribute header is managed for you. A module that does not exist is created: standard by default, or a class with kind='class'. Pass expected_content_token from your read and the write is refused if the module changed since. The result carries a diff of what the file now holds, read back after saving, which is what to show the user when they ask what changed. After writing, call xlide_analyze and treat any error as a build failure. Ask the user first when the project is protected or signed.",
+      "description": "The canonical way to change VBA. Writes a module's source into the Office file and saves it. It replaces the module's whole source, so send all of it; send the body only, because the attribute header is managed for you. A module that does not exist is created: standard by default, or a class with kind='class'. Pass expected_content_token from your read and the write is refused if the module changed since. The result carries a diff of what the file now holds, read back after saving, which is what to show the user when they ask what changed. After writing, call xlide_analyze and treat any error as a build failure. Identical source is reported without saving. Ask the user first when the project is protected or signed.",
       "input_schema": {
         "properties": {
           "allow_invalidate_signature": {
@@ -2831,7 +3290,7 @@
         "idempotent": true,
         "read_only": false
       },
-      "description": "Changes a workbook's Power Query and saves it. action='set' replaces a query's M formula, creating it if it does not exist; 'rename' renames it and rewrites the queries that reference it by name; 'remove' deletes it and everything that loaded it onto a sheet, which has no undo, so ask the user first. 'load' puts a query's result on a worksheet and 'unload' takes it back off. Loading needs the column names, because writing the connection means naming the columns and knowing them means running the query, which nothing here does; Excel settles them against the real result on the first refresh. A query already loaded keeps its rows until Excel refreshes it.",
+      "description": "Changes a workbook's Power Query and saves it. action='set' replaces a query's M formula, creating it if it does not exist; 'rename' renames it and rewrites the queries that reference it by name; 'remove' deletes it and everything that loaded it onto a sheet, which has no undo, so ask the user first. 'load' puts a query's result on a worksheet and 'unload' takes it back off. Loading needs the column names, because writing the connection means naming the columns and knowing them means running the query, which nothing here does; Excel settles them against the real result on the first refresh. A query already loaded keeps its rows until Excel refreshes it. Pass expected_content_token from xlide_read_query to refuse a change if that query changed meanwhile.",
       "input_schema": {
         "properties": {
           "action": {
@@ -2865,6 +3324,12 @@
             "default": "",
             "description": "For set: the query's description.",
             "title": "Description",
+            "type": "string"
+          },
+          "expected_content_token": {
+            "default": "",
+            "description": "Optional read token to guard the change.",
+            "title": "Expected Content Token",
             "type": "string"
           },
           "file_path": {

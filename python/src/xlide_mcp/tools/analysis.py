@@ -24,7 +24,7 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import resolve_path
-from ._common import limited, read_only
+from ._common import limited, page, read_only
 
 # A file with thousands of findings is a file nobody is going to fix from one
 # tool result. Report the count honestly, return the ones worth acting on.
@@ -45,7 +45,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Call this after "
             "every VBA change and treat any problem at error severity as a build failure: fix "
             "it and analyze again until it is clean. Warnings are worth reading; some are "
-            "style, some are the bug."
+            "style, some are the bug. Use offset and next_offset to read later findings."
         ),
     )
     def analyze(
@@ -67,6 +67,18 @@ def register(server: MCPServer, settings: Settings) -> None:
                 description="Lowest severity to report: 'error', 'warning' or 'information'.",
             ),
         ] = "information",
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many matching findings.")
+        ] = 0,
+        max_results: Annotated[
+            int,
+            Field(
+                default=MAX_DIAGNOSTICS,
+                ge=1,
+                le=MAX_DIAGNOSTICS,
+                description="Return at most this many findings.",
+            ),
+        ] = MAX_DIAGNOSTICS,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
@@ -119,20 +131,24 @@ def register(server: MCPServer, settings: Settings) -> None:
                 )
 
         findings.sort(key=lambda f: (-_RANK[f["severity"]], f["module"], f["line"]))
-        shown, total = limited(findings, MAX_DIAGNOSTICS)
+        shown, next_offset = page(findings, "diagnostics", offset, max_results)
         result: dict[str, Any] = {
             "path": str(path),
             "host": info.host,
             "modules_analyzed": len(by_module),
             "counts": counts,
             "reported": len(shown),
+            "matching_count": len(findings),
             "problems": shown,
+            "offset": offset,
+            "next_offset": next_offset,
             "verdict": "clean" if counts["error"] == 0 else "errors found",
         }
-        if total > len(shown):
+        if next_offset is not None:
             result["note"] = (
-                f"{total - len(shown)} further problems not listed. Raise min_severity, or "
-                "narrow to one module, to see the rest."
+                f"{len(findings)} findings match the filters; call again with "
+                f"offset={next_offset} for the next page. Raise min_severity or narrow "
+                "to one module for a smaller result."
             )
         if not has_project:
             result["note"] = project_layer.no_project_note(path, info)
@@ -153,7 +169,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "file, and catches the compile errors that would otherwise surface in front of the "
             "user. Pass host so the code is measured against the right object model, and "
             "file_path instead if the code is destined for a file that already exists, which "
-            "resolves calls into the rest of that project."
+            "resolves calls into the rest of that project. Use offset and next_offset "
+            "to read later findings from a long result."
         ),
     )
     def analyze_source(
@@ -188,6 +205,18 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = "",
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Skip this many findings.")
+        ] = 0,
+        max_results: Annotated[
+            int,
+            Field(
+                default=MAX_DIAGNOSTICS,
+                ge=1,
+                le=MAX_DIAGNOSTICS,
+                description="Return at most this many findings.",
+            ),
+        ] = MAX_DIAGNOSTICS,
     ) -> dict[str, Any]:
         from pyvbaanalysis import ModuleInput, analyze_project
 
@@ -225,7 +254,8 @@ def register(server: MCPServer, settings: Settings) -> None:
         ]
         findings.sort(key=lambda f: (-_RANK[f["severity"]], f["line"]))
         errors = sum(1 for f in findings if f["severity"] == "error")
-        return {
+        shown, next_offset = page(findings, "diagnostics", offset, max_results)
+        result: dict[str, Any] = {
             "module": module_name,
             "kind": module_kind.value,
             "host": resolved_host or "(language only)",
@@ -234,9 +264,18 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "warning": sum(1 for f in findings if f["severity"] == "warning"),
                 "information": sum(1 for f in findings if f["severity"] == "information"),
             },
-            "problems": findings,
+            "matching_count": len(findings),
+            "problems": shown,
+            "offset": offset,
+            "next_offset": next_offset,
             "verdict": "clean" if errors == 0 else "errors found",
         }
+        if next_offset is not None:
+            result["note"] = (
+                f"{len(findings)} findings in all; call again with offset={next_offset} "
+                "for the next page."
+            )
+        return result
 
     @server.tool(
         name="xlide_rules",

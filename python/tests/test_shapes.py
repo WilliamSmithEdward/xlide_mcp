@@ -118,6 +118,36 @@ def test_one_sheet_can_be_asked_for(
     assert result["shape_count"] == 3
 
 
+def test_shape_pages_reach_later_shapes(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    first = call(
+        "xlide_list_shapes", file_path=str(shapes_workbook), sheet="Controls",
+        max_results=1,
+    )
+    assert first["shape_count"] == 3
+    assert first["next_offset"] == 1
+    second = call(
+        "xlide_list_shapes", file_path=str(shapes_workbook), sheet="Controls",
+        max_results=1, offset=first["next_offset"],
+    )
+    assert second["sheets"][0]["shapes"][0]["name"] != first["sheets"][0]["shapes"][0]["name"]
+    last = call(
+        "xlide_list_shapes", file_path=str(shapes_workbook), sheet="Controls",
+        max_results=1, offset=2,
+    )
+    assert last["next_offset"] is None
+    assert len(last["sheets"][0]["shapes"]) == 1
+
+
+def test_shape_offset_requires_a_sheet(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    with pytest.raises(ToolFailure) as refusal:
+        call("xlide_list_shapes", file_path=str(shapes_workbook), offset=1)
+    assert "Set sheet" in refusal.value.message
+
+
 def test_an_unknown_sheet_is_refused(
     call: Callable[..., Any], shapes_workbook: Path
 ) -> None:

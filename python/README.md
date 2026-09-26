@@ -9,8 +9,9 @@
 test the VBA in Excel, Word, PowerPoint and Access, and edit the document around
 it. Visual Basic 6 projects open the same way.
 
-Reading and writing needs no Office installation and runs on Windows, macOS and
-Linux. Running macros and tests needs Windows with the desktop application.
+VBA, Power Query and OOXML worksheet edits need no Office installation and run on
+Windows, macOS and Linux. Reading `.xlsb` and `.xls` cells, writing `.xlsb` cells,
+and running macros or tests need Windows with the desktop application.
 
 ```text
 xlide_list_projects                -> Budget.xlsm
@@ -66,6 +67,26 @@ launches a server over stdio:
 }
 ```
 
+For VS Code, put this in `.vscode/mcp.json` at the workspace root. VS Code uses
+`servers` here; the portable `.mcp.json` format above uses `mcpServers`.
+
+```json
+{
+  "servers": {
+    "xlide": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "xlide-mcp[live]", "xlide-mcp", "--root", "${workspaceFolder}"]
+    }
+  }
+}
+```
+
+Run `MCP: List Servers` in VS Code to start `xlide` and inspect its output if it
+does not register. The server prints its version and allowed roots to stderr on
+startup. See [VS Code's MCP guide](https://code.visualstudio.com/docs/agent-customization/mcp-servers)
+for the configuration format and commands.
+
 With uv instead, so that nothing has to be installed first:
 
 ```json
@@ -104,19 +125,55 @@ whether each has the Trust Center setting that module injection needs.
 
 ## What it does
 
-**Files** - no Office installation, any platform. Two halves: the code project,
-and the document it lives in.
+**Files** - the VBA project and the document it lives in. Most file tools need no
+Office installation; binary Excel grids use Excel on Windows.
 
 *The code project*
 
 | | |
 |---|---|
 | Discover | `xlide_list_projects`, `xlide_project_info`, `xlide_validate_project`, `xlide_create_project`, `xlide_doctor` |
-| Modules | `xlide_list_modules`, `xlide_read_module`, `xlide_write_module`, `xlide_rename_module`, `xlide_delete_module`, `xlide_list_procedures`, `xlide_search_modules` |
+| Modules | `xlide_list_modules`, `xlide_read_module`, `xlide_write_module`, `xlide_edit_module`, `xlide_rename_module`, `xlide_delete_module`, `xlide_list_procedures`, `xlide_search_modules` |
 | Analysis | `xlide_analyze`, `xlide_analyze_source`, `xlide_rules` |
 | Forms | `xlide_list_forms`, `xlide_read_form`, `xlide_manage_form`, `xlide_edit_form` |
-| References and catalog | `xlide_list_references`, `xlide_manage_reference`, `xlide_access_catalog` |
+| References and catalog | `xlide_list_references`, `xlide_manage_reference`, `xlide_access_catalog`, `xlide_read_access_query` |
 | Source control | `xlide_export_modules`, `xlide_import_modules`, `xlide_git_changes` |
+
+`xlide_edit_module` accepts `preview_only=true` to check a batch of line edits and
+return its proposed diff without saving. The preview's content token can be used
+to apply the same edits if the module has not changed.
+`xlide_search_modules` returns tokens for matched modules, so its line numbers
+can also be passed directly to a guarded edit.
+Broad searches can be paged with `offset` and `next_offset`; `total_match_count`
+reports how many matching lines exist across all pages.
+`xlide_list_procedures` returns a content token for guarded edits at the listed
+lines. Reading an empty module returns its empty body and token.
+Writing an identical module or applying an unchanged module import skips the save;
+the response reports `saved=false`.
+Applying an unchanged export leaves the existing `.bas` and `.cls` files untouched.
+Long Power Query formulas can be read by line; the read returns a token that
+`xlide_write_query` can use to refuse a stale change.
+Large form designs can be read in pages with `offset` and `next_offset`.
+Office file, VBA module and Power Query lists also return `next_offset` when a
+later page is available.
+For crowded drawing layers, pass `sheet` to `xlide_list_shapes` and follow its
+`next_offset` to read later shapes.
+Worksheet lists mark unreadable visibility or pivot metadata as unknown, and formatted or rich
+text cell reads name the cell when decoding fails instead of returning a blank.
+An Excel-backed worksheet survey refuses malformed output instead of dropping sheets.
+An Excel-backed cell read refuses a partial grid instead of labeling it as the full range.
+Form summary lists use the same `offset` and `next_offset` paging.
+Form reads distinguish missing properties or sections from a read failure, and
+an unreadable Access report collection fails instead of appearing empty.
+Procedure lists also return `next_offset` for long modules.
+Structural validation problems can be read with `offset` and `next_offset`.
+Access catalog lists return a `next_offsets` entry for each included collection.
+Long saved query SQL is previewed in the catalog; `xlide_read_access_query`
+returns the full text in character pages with a content token.
+The `list` actions for tables, names, validation, conditional formats, hyperlinks
+and comments also accept `offset` and `max_results` and return `next_offset`.
+Merging cells keeps only the top-left value. `xlide_format_cells` refuses to clear
+other values or formulas unless `allow_overwrite=true` is passed.
 
 *The document around it*
 
@@ -145,6 +202,11 @@ the Visual Basic Editor.
 `xlide_live_sessions`, `xlide_live_state`, `xlide_live_request`,
 `xlide_live_read_module`
 
+`xlide_live_read_module` accepts line ranges for long unsaved source and returns
+a content token for comparing that source with the saved module.
+Both analysis tools return `next_offset` when findings exceed a page, while
+keeping their full severity counts.
+
 ### Formats
 
 | Host | Extensions |
@@ -155,10 +217,11 @@ the Visual Basic Editor.
 | Access | `.accdb` `.mdb` |
 | Visual Basic 6 | `.vbp` |
 
-VBA reads and writes in all of them. Power Query and the document surface are
-Excel's, and they live in the OOXML package, so they come from `.xlsx`, `.xlsm`
-and `.xlam`. A `.xlsb` keeps its grid in binary records and a `.xls` inside a
-compound file; on Windows with Excel, both go through Excel instead.
+VBA reads and writes in all of them. Power Query is available in `.xlsx`, `.xlsm`,
+`.xlsb` and `.xlam`; package-based worksheet edits are available in `.xlsx`,
+`.xlsm` and `.xlam`. A `.xlsb` keeps its grid in binary records and a `.xls`
+inside a compound file; on Windows with Excel, both can be read for values, and
+`.xlsb` cells can be written. This server does not write `.xls` cells.
 
 A recognized extension outside those sets is listed with the reason it cannot be
 opened. Nothing drops out of a listing without saying why.
@@ -218,7 +281,8 @@ them whether or not the user configured anything.
   says to save or discard it, and a process is ended only when asked.
 - Anything hard to undo is the user's decision: deleting a module, overwriting
   cells that hold data, writing to a project that is signed or
-  password-protected. The last two are refused until the call carries the flag
+  password-protected. Cell overwrites and writes to signed or protected projects
+  are refused until the call carries the flag
   that allows them.
 - A cell value read from the package is what Excel last calculated. A formula
   written there has no result in the file until Excel next opens it.

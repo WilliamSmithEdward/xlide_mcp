@@ -47,7 +47,9 @@ def register(server: MCPServer, settings: Settings) -> None:
             "the rest of its own format and making a header row bold does not flatten the "
             "number formats under it. Colours are RRGGBB or AARRGGBB hex without a leading "
             "hash. A number format is an Excel format code such as '#,##0.00' or 'yyyy-mm-dd'; "
-            "that code is also what decides whether a number is shown as a date. Works on "
+            "that code is also what decides whether a number is shown as a date. Merging "
+            "clears values and formulas outside the top-left cell; allow_overwrite is required "
+            "when that would discard content. Works on "
             ".xlsx, .xlsm and .xlam."
         ),
     )
@@ -125,6 +127,16 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = "",
+        allow_overwrite: Annotated[
+            bool,
+            Field(
+                default=False,
+                description=(
+                    "For merge: allow clearing values or formulas in cells other than the "
+                    "top-left cell. Ask the user first."
+                ),
+            ),
+        ] = False,
         style: Annotated[
             str,
             Field(
@@ -155,9 +167,23 @@ def register(server: MCPServer, settings: Settings) -> None:
             )
 
         applied: list[str] = []
+        merge_loss: dict[str, int] = {}
         with cells.editing(path) as book:
             sheet_object = cells.sheet_named(book, sheet)
             area = _area(sheet_object, cell_range)
+            if wanted_merge == "merge":
+                merge_loss = _merge_loss(area)
+                if merge_loss["cells_cleared"] and not allow_overwrite:
+                    formula_word = (
+                        "formula" if merge_loss["formulas_cleared"] == 1 else "formulas"
+                    )
+                    raise ToolError(
+                        f"Merging {area.a1} would clear {merge_loss['cells_cleared']} cells "
+                        f"outside the top-left cell, including "
+                        f"{merge_loss['formulas_cleared']} {formula_word}. Nothing was saved. "
+                        "Read the range, ask the user, then call again with "
+                        "allow_overwrite=true."
+                    )
 
             # First, so what else this call sets lands on top of the style, as it
             # would if the user picked the style and then made the text bold.
@@ -191,6 +217,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             "sheet": name,
             "range": reference,
             "applied": applied,
+            **merge_loss,
             "saved": True,
             "recalculated": False,
             "note": (
@@ -201,6 +228,21 @@ def register(server: MCPServer, settings: Settings) -> None:
 
 
 # ------------------------------------------------------------------ the parts
+
+
+def _merge_loss(area: Any) -> dict[str, int]:
+    """Values and formulas pyOfficeEditor will clear outside the merge anchor."""
+    anchor = area.reference.start
+    occupied = formulas = 0
+    for cell in area:
+        if cell.row == anchor.row and cell.column == anchor.column:
+            continue
+        if cell.formula is not None:
+            formulas += 1
+            occupied += 1
+        elif cell.value is not None:
+            occupied += 1
+    return {"cells_cleared": occupied, "formulas_cleared": formulas}
 
 
 def _font_changes(

@@ -21,7 +21,7 @@ from .. import cells
 from ..config import Settings
 from ..errors import ToolError
 from ..paths import require_writable, resolve_path
-from ._common import bound, read_only, writes
+from ._common import page, read_only, writes
 from .sheets import excel_with_sheets
 
 VALIDATION_KINDS = ("whole", "decimal", "list", "date", "time", "textLength", "custom")
@@ -65,6 +65,10 @@ def register(server: MCPServer, settings: Settings) -> None:
         totals_row: Annotated[
             bool, Field(default=False, description="For add: give the table a totals row.")
         ] = False,
+        offset: Annotated[int, Field(default=0, ge=0, description="For list: tables to skip.")] = 0,
+        max_results: Annotated[
+            int, Field(default=500, ge=1, le=500, description="For list: most tables to return.")
+        ] = 500,
     ) -> dict[str, Any]:
         wanted = _action(action, ("list", "add", "remove"))
         if wanted == "list":
@@ -76,10 +80,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                     if not sheet.strip() or owner.name.casefold() == sheet.strip().casefold()
                     for table in owner.tables
                 ]
-            shown, note = bound(found, "tables", "Ask for one sheet with sheet=.")
-            result: dict[str, Any] = {"path": str(path), "count": len(found), "tables": shown}
-            if note:
-                result["note"] = note
+            shown, next_offset = page(found, "tables", offset, max_results)
+            result: dict[str, Any] = {
+                "path": str(path), "count": len(found), "offset": offset,
+                "next_offset": next_offset, "tables": shown,
+            }
             return result
 
         require_writable(settings, "xlide_manage_table")
@@ -99,9 +104,10 @@ def register(server: MCPServer, settings: Settings) -> None:
         annotations=writes("Defined names", destructive=True),
         description=(
             "Lists, adds or removes a workbook's defined names. A defined name is what lets a "
-            "formula say TaxRate rather than Config!$B$7, and VBA reads them too, so renaming "
-            "or removing one can break code as well as formulas. action='list' changes "
-            "nothing. refers_to is a formula, so it needs its sheet and its dollar signs: "
+            "formula say TaxRate rather than Config!$B$7, and VBA reads them too, so removing "
+            "one can break code as well as formulas. action='list' changes nothing. For a "
+            "range, qualify refers_to with its sheet and use absolute addresses to avoid "
+            "following the active sheet or moving with a copied formula, for example "
             "Data!$A$1:$A$50."
         ),
     )
@@ -122,6 +128,10 @@ def register(server: MCPServer, settings: Settings) -> None:
                 description="A sheet name to scope it to that sheet. Empty means the workbook.",
             ),
         ] = "",
+        offset: Annotated[int, Field(default=0, ge=0, description="For list: names to skip.")] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="For list: most names to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         wanted = _action(action, ("list", "add", "remove"))
         path = excel_with_sheets(file_path, settings)
@@ -137,10 +147,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                     }
                     for entry in book.defined_names
                 ]
-            shown, note = bound(found, "relationships", "")
-            result: dict[str, Any] = {"path": str(path), "count": len(found), "names": shown}
-            if note:
-                result["note"] = note
+            shown, next_offset = page(found, "relationships", offset, max_results)
+            result: dict[str, Any] = {
+                "path": str(path), "count": len(found), "offset": offset,
+                "next_offset": next_offset, "names": shown,
+            }
             return result
 
         require_writable(settings, "xlide_manage_name")
@@ -225,6 +236,12 @@ def register(server: MCPServer, settings: Settings) -> None:
         error_message: Annotated[
             str, Field(default="", description="What Excel says when the entry is refused.")
         ] = "",
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="For list: validations to skip.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="For list: most to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         wanted = _action(action, ("list", "add", "clear"))
         path = excel_with_sheets(file_path, settings)
@@ -234,12 +251,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                 target = cells.sheet_named(book, sheet)
                 found = [_validation_summary(rule) for rule in target.data_validations]
                 name = target.name
-            shown, note = bound(found, "relationships", "")
+            shown, next_offset = page(found, "relationships", offset, max_results)
             result: dict[str, Any] = {
-                "path": str(path), "sheet": name, "count": len(found), "validations": shown,
+                "path": str(path), "sheet": name, "count": len(found),
+                "offset": offset, "next_offset": next_offset, "validations": shown,
             }
-            if note:
-                result["note"] = note
             return result
 
         require_writable(settings, "xlide_manage_validation")
@@ -317,6 +333,12 @@ def register(server: MCPServer, settings: Settings) -> None:
         bold: Annotated[
             bool | None, Field(default=None, description="Make matching cells bold.")
         ] = None,
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="For list: format ranges to skip.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="For list: most to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         wanted = _action(action, ("list", "add", "clear"))
         path = excel_with_sheets(file_path, settings)
@@ -326,7 +348,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 target = cells.sheet_named(book, sheet)
                 found = [
                     {
-                        "range": str(getattr(entry, "reference", "") or ""),
+                        "range": entry.sqref,
                         "rules": [
                             {
                                 "kind": str(getattr(r, "kind", "") or ""),
@@ -339,12 +361,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                     for entry in target.conditional_formats
                 ]
                 name = target.name
-            shown, note = bound(found, "relationships", "")
+            shown, next_offset = page(found, "relationships", offset, max_results)
             result: dict[str, Any] = {
-                "path": str(path), "sheet": name, "count": len(found), "formats": shown,
+                "path": str(path), "sheet": name, "count": len(found),
+                "offset": offset, "next_offset": next_offset, "formats": shown,
             }
-            if note:
-                result["note"] = note
             return result
 
         require_writable(settings, "xlide_manage_conditional_format")
@@ -395,6 +416,10 @@ def register(server: MCPServer, settings: Settings) -> None:
         tooltip: Annotated[
             str, Field(default="", description="For add: the hover text.")
         ] = "",
+        offset: Annotated[int, Field(default=0, ge=0, description="For list: links to skip.")] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="For list: most links to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         wanted = _action(action, ("list", "add", "remove"))
         path = excel_with_sheets(file_path, settings)
@@ -404,7 +429,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 sheet_object = cells.sheet_named(book, sheet)
                 found = [
                     {
-                        "range": str(getattr(link, "reference", "") or ""),
+                        "range": link.ref.a1,
                         "target": getattr(link, "target", "") or "",
                         "location": getattr(link, "location", "") or "",
                         "display": getattr(link, "display", "") or "",
@@ -412,12 +437,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                     for link in sheet_object.hyperlinks
                 ]
                 name = sheet_object.name
-            shown, note = bound(found, "relationships", "")
+            shown, next_offset = page(found, "relationships", offset, max_results)
             result: dict[str, Any] = {
-                "path": str(path), "sheet": name, "count": len(found), "hyperlinks": shown,
+                "path": str(path), "sheet": name, "count": len(found),
+                "offset": offset, "next_offset": next_offset, "hyperlinks": shown,
             }
-            if note:
-                result["note"] = note
             return result
 
         require_writable(settings, "xlide_manage_hyperlink")
@@ -547,6 +571,12 @@ def register(server: MCPServer, settings: Settings) -> None:
         resolved: Annotated[
             bool, Field(default=True, description="For resolve: false opens a thread again.")
         ] = True,
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="For list: comments to skip.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=300, description="For list: most comments to return.")
+        ] = 300,
     ) -> dict[str, Any]:
         wanted = _action(action, ("list", "set", "reply", "resolve", "remove"))
         path = excel_with_sheets(file_path, settings)
@@ -555,12 +585,11 @@ def register(server: MCPServer, settings: Settings) -> None:
                 target = cells.sheet_named(book, sheet)
                 found = _comments(target, cell.strip())
                 name = target.name
-            shown, note = bound(found, "comments", "Ask for one cell with cell=.")
+            shown, next_offset = page(found, "comments", offset, max_results)
             result: dict[str, Any] = {
-                "path": str(path), "sheet": name, "count": len(found), "comments": shown,
+                "path": str(path), "sheet": name, "count": len(found),
+                "offset": offset, "next_offset": next_offset, "comments": shown,
             }
-            if note:
-                result["note"] = note
             return result
 
         require_writable(settings, "xlide_manage_comment")

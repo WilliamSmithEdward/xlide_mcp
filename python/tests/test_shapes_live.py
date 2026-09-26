@@ -25,6 +25,12 @@ pytestmark = [
     pytest.mark.skipif(sys.platform != "win32", reason="needs Windows with Excel installed"),
 ]
 
+
+def _excel_session() -> object:
+    from pyvbaharness import ExcelSession, HarnessConfig
+
+    return ExcelSession(HarnessConfig(lock_wait_s=60.0))
+
 FIXTURE = Path(__file__).parent / "fixtures" / "shapes.xlsm"
 
 # The workbook the fixture is. Excel authors it, because a Forms-toolbar button
@@ -70,9 +76,7 @@ End Function
 
 
 def build_with_excel(target: Path) -> None:
-    from pyvbaharness import ExcelSession
-
-    with ExcelSession() as excel:
+    with _excel_session() as excel:
         result = excel.run_vba(
             BUILD_SOURCE, proc="BuildIt", args=(str(target),), timeout=240
         )
@@ -142,9 +146,7 @@ def test_excel_accepts_a_workbook_whose_shape_macro_this_server_changed(
     set_shape_macro(workbook, "Controls", "RunButton", "Module1.Renamed")
     set_shape_macro(workbook, "Controls", "GoShape", "Module1.Renamed")
 
-    from pyvbaharness import ExcelSession
-
-    with ExcelSession() as excel:
+    with _excel_session() as excel:
         excel.open_document(str(workbook), read_only=True)
         result = excel.run_vba(READ_BACK, proc="ReadBack", timeout=240)
 
@@ -189,9 +191,7 @@ def test_excel_opens_a_workbook_this_server_added_and_removed_controls_in(
     )
     remove_shape(workbook, "Controls", "GoShape")
 
-    from pyvbaharness import ExcelSession
-
-    with ExcelSession() as excel:
+    with _excel_session() as excel:
         excel.open_document(str(workbook), read_only=True)
         result = excel.run_vba(READ_ADDED, proc="ReadAdded", timeout=240)
 

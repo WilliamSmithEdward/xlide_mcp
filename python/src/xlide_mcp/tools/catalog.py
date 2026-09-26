@@ -35,7 +35,14 @@ from ..config import Settings
 from ..errors import ToolError
 from ..hosts import require_readable
 from ..paths import require_writable, resolve_path
-from ._common import limited, read_only, writes
+from ..tokens import content_token
+from ._common import (
+    ALLOW_PROTECTED_DESCRIPTION,
+    ALLOW_SIGNATURE_DESCRIPTION,
+    page,
+    read_only,
+    writes,
+)
 
 # The four libraries pyOpenVBA can add by name alone, on any platform.
 _OFFICE_LIBRARIES = frozenset({"excel", "word", "powerpoint", "access"})
@@ -132,10 +139,10 @@ def register(server: MCPServer, settings: Settings) -> None:
             ),
         ] = "",
         allow_protected: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_PROTECTED_DESCRIPTION)
         ] = False,
         allow_invalidate_signature: Annotated[
-            bool, Field(default=False, description="Ask the user first.")
+            bool, Field(default=False, description=ALLOW_SIGNATURE_DESCRIPTION)
         ] = False,
     ) -> dict[str, Any]:
         require_writable(settings, "xlide_manage_reference")
@@ -240,7 +247,11 @@ def register(server: MCPServer, settings: Settings) -> None:
             "Lists what an Access database holds besides its code: tables with their columns, "
             "saved queries with their SQL, and the relationships between tables. An .accdb is "
             "an application rather than a document, and the VBA in it is written against "
-            "these, so reading the modules alone shows half of it. Access files only."
+            "these, so reading the modules alone shows half of it. Use include with offset "
+            "and next_offsets to page through a large catalog. Long query SQL is previewed; "
+            "use xlide_read_access_query for the whole text. If one query's SQL cannot be "
+            "read, that entry has sql=null and sql_error rather than hiding the catalog. "
+            "Access files only."
         ),
     )
     def access_catalog(
@@ -263,6 +274,12 @@ def register(server: MCPServer, settings: Settings) -> None:
                 ),
             ),
         ] = False,
+        offset: Annotated[
+            int, Field(default=0, ge=0, description="Items to skip in each list.")
+        ] = 0,
+        max_results: Annotated[
+            int, Field(default=300, ge=1, le=500, description="Most items per list.")
+        ] = 300,
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
@@ -277,15 +294,93 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "include must be 'tables', 'queries', 'relationships' or 'all'."
             )
 
-        result: dict[str, Any] = {"path": str(path)}
+        result: dict[str, Any] = {
+            "path": str(path), "offset": offset, "counts": {}, "next_offsets": {},
+        }
         with project_layer.open_project(path, info) as handle:
             if wanted in {"tables", "all"}:
-                result["tables"] = _tables(handle, include_system)
+                shown, count, next_offset = _tables(
+                    handle, include_system, offset, max_results
+                )
+                result["tables"] = shown
+                result["counts"]["tables"] = count
+                result["next_offsets"]["tables"] = next_offset
             if wanted in {"queries", "all"}:
-                result["queries"] = _queries(handle)
+                shown, count, next_offset = _queries(handle, offset, max_results)
+                result["queries"] = shown
+                result["counts"]["queries"] = count
+                result["next_offsets"]["queries"] = next_offset
             if wanted in {"relationships", "all"}:
-                result["relationships"] = _relationships(handle, include_system)
+                found = _relationships(handle, include_system)
+                result["relationships"], result["next_offsets"]["relationships"] = page(
+                    found, "relationships", offset, max_results
+                )
+                result["counts"]["relationships"] = len(found)
         return result
+
+    @server.tool(
+        name="xlide_read_access_query",
+        title="Read Access saved query",
+        annotations=read_only("Read Access saved query"),
+        description=(
+            "Reads the SQL of one saved query in an Access database. Use it after "
+            "xlide_access_catalog when a query's SQL was previewed. offset and max_chars "
+            "read long SQL in character slices; next_offset points to the next slice. "
+            "content_token describes the whole SQL, so compare it across pages if the "
+            "database may have changed. Access files only."
+        ),
+    )
+    def read_access_query(
+        file_path: Annotated[str, Field(description="Absolute path to the Access database.")],
+        query_name: Annotated[str, Field(description="Saved query name, matched without case.")],
+        offset: Annotated[int, Field(default=0, ge=0, description="Characters to skip.")] = 0,
+        max_chars: Annotated[
+            int,
+            Field(default=20_000, ge=1, le=40_000, description="Most SQL characters to return."),
+        ] = 20_000,
+    ) -> dict[str, Any]:
+        path = resolve_path(file_path, settings)
+        info = require_readable(path)
+        if info.host != "access":
+            raise ToolError(
+                f"{path.name} is a {info.title} file. Saved queries require an "
+                "Access database."
+            )
+        with project_layer.open_project(path, info) as handle:
+            try:
+                saved = list(handle.queries())
+            except Exception as exc:
+                raise ToolError(f"The database's saved queries could not be read: {exc}") from exc
+            requested = query_name.strip().casefold()
+            query = next((entry for entry in saved if entry.name.casefold() == requested), None)
+            if query is None:
+                names = ", ".join(entry.name for entry in saved[:10]) or "(none)"
+                more = len(saved) - 10
+                suffix = (
+                    f" and {more} more; use xlide_access_catalog to list them."
+                    if more > 0 else "."
+                )
+                raise ToolError(
+                    f"No saved query named {query_name!r}. This database has: {names}{suffix}"
+                )
+            try:
+                sql = getattr(query, "sql", "") or ""
+            except Exception as exc:
+                raise ToolError(f"The SQL for {query.name} could not be read: {exc}") from exc
+        if offset > len(sql):
+            raise ToolError(
+                f"{query.name} has {len(sql)} SQL characters; offset {offset} is past the end."
+            )
+        next_offset = offset + min(max_chars, len(sql) - offset)
+        return {
+            "path": str(path),
+            "query": query.name,
+            "sql": sql[offset:next_offset],
+            "content_token": content_token(sql),
+            "total_chars": len(sql),
+            "offset": offset,
+            "next_offset": next_offset if next_offset < len(sql) else None,
+        }
 
 
 def _library_spec(library: str, guid: str, version: str) -> dict[str, Any]:
@@ -420,14 +515,16 @@ def _describe_libid(libid: str) -> dict[str, Any]:
     return out
 
 
-def _tables(handle: Any, include_system: bool) -> list[dict[str, Any]]:
+def _tables(
+    handle: Any, include_system: bool, offset: int, max_results: int
+) -> tuple[list[dict[str, Any]], int, int | None]:
     try:
         names = list(handle.table_names(include_system=include_system))
     except Exception as exc:
         raise ToolError(f"The database's tables could not be read: {exc}") from exc
 
     out: list[dict[str, Any]] = []
-    for name in names:
+    for name in names[offset : offset + max_results]:
         entry: dict[str, Any] = {"name": name}
         try:
             columns, indexes = handle.table_specs(name)
@@ -445,10 +542,9 @@ def _tables(handle: Any, include_system: bool) -> list[dict[str, Any]]:
                 for index in indexes
             ]
         out.append(entry)
-    shown, total = limited(out, 500)
-    if total > len(shown):
-        shown.append({"note": f"{total - len(shown)} further tables not listed."})
-    return shown
+    shown, _ = page(out, "tables", 0, max_results)
+    following = offset + len(shown)
+    return shown, len(names), following if following < len(names) else None
 
 
 def _column(column: Any) -> dict[str, Any]:
@@ -462,22 +558,35 @@ def _column(column: Any) -> dict[str, Any]:
     return entry
 
 
-def _queries(handle: Any) -> list[dict[str, Any]]:
+def _queries(
+    handle: Any, offset: int, max_results: int
+) -> tuple[list[dict[str, Any]], int, int | None]:
     try:
         saved = list(handle.queries())
     except Exception as exc:
         raise ToolError(f"The database's saved queries could not be read: {exc}") from exc
-    out = [
-        {
-            "name": getattr(query, "name", ""),
-            "sql": (getattr(query, "sql", "") or "").strip(),
-        }
-        for query in saved
-    ]
-    shown, total = limited(out, 500)
-    if total > len(shown):
-        shown.append({"note": f"{total - len(shown)} further queries not listed."})
-    return shown
+    out: list[dict[str, Any]] = []
+    for query in saved[offset : offset + max_results]:
+        entry: dict[str, Any] = {"name": getattr(query, "name", "")}
+        try:
+            sql = getattr(query, "sql", "") or ""
+        except Exception as exc:
+            entry.update({
+                "sql": None,
+                "sql_chars": None,
+                "sql_truncated": None,
+                "sql_error": f"The SQL could not be read: {exc}",
+            })
+        else:
+            entry.update({
+                "sql": sql[:8_000],
+                "sql_chars": len(sql),
+                "sql_truncated": len(sql) > 8_000,
+            })
+        out.append(entry)
+    shown, _ = page(out, "queries", 0, max_results)
+    following = offset + len(shown)
+    return shown, len(saved), following if following < len(saved) else None
 
 
 def _relationships(handle: Any, include_system: bool) -> list[dict[str, Any]]:

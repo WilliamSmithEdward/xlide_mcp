@@ -127,13 +127,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         server.run("stdio")
         return 0
 
-    server.settings.host = args.host  # type: ignore[attr-defined]
-    server.settings.port = args.port  # type: ignore[attr-defined]
     print(
         f"xlide-mcp {__version__} on http://{args.host}:{args.port} | {settings.describe()}",
         file=sys.stderr,
     )
-    server.run(args.transport)
+    server.run(args.transport, host=args.host, port=args.port)
     return 0
 
 

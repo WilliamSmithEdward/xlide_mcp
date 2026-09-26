@@ -273,6 +273,7 @@ def access_database(workspace: Path) -> Path:
     path = workspace / "App.accdb"
     with pyopenvba.AccessDatabase.create_new(path) as db:
         db.create_table("Orders", [pyopenvba.ColumnSpec("Id", "long")])
+        db.create_query("AllOrders", "SELECT * FROM Orders;")
         db.vba_project().add_module("Helpers", ACCESS_MODULE.replace("\n", "\r\n"))
         db.save()
     return path

@@ -181,7 +181,7 @@ Rules the surface holds to, each of which has a conformance case behind it:
   cached value off as fresh. An implementation that reported a computed value it
   did not compute would be lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 24 of the 98 conformance cases
+A refusal is as much of the contract as a success: 29 of the 133 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

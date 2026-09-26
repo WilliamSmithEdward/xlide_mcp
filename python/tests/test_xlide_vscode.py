@@ -248,7 +248,8 @@ def test_a_proxy_in_the_environment_is_never_used(
     which hands the proxy the token and the module text. The proxy refuses, so a
     notice that went through it would not arrive."""
     written = call(
-        "xlide_write_module", file_path=str(workbook), module_name="Helpers", source=SAMPLE_MODULE
+        "xlide_write_module", file_path=str(workbook), module_name="Helpers",
+        source=SAMPLE_MODULE.replace("a + b", "a * b"),
     )
     assert written["xlide_vscode"]["notified"] is True
     assert xlide.notices[-1][0] == "agent-edit"

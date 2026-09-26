@@ -32,6 +32,78 @@ def with_form(workspace: Path) -> Path:
     return path
 
 
+def test_an_unreadable_access_report_list_is_not_reported_as_empty() -> None:
+    from xlide_mcp.errors import ToolError
+    from xlide_mcp.tools.forms import _forms
+
+    class BrokenReports:
+        def forms(self) -> list[Any]:
+            return []
+
+        def reports(self) -> list[Any]:
+            raise ValueError("report directory is damaged")
+
+    with pytest.raises(ToolError) as refusal:
+        _forms(BrokenReports(), "Access")
+    assert "report directory is damaged" in str(refusal.value)
+    assert "list is incomplete" in str(refusal.value)
+
+
+def test_a_form_storage_error_is_not_called_an_unsupported_host() -> None:
+    from xlide_mcp.errors import ToolError
+    from xlide_mcp.tools.forms import _forms
+
+    class BrokenForms:
+        def forms(self) -> list[Any]:
+            raise AttributeError("designer record is missing")
+
+    with pytest.raises(ToolError) as refusal:
+        _forms(BrokenForms(), "Excel")
+    assert "could not be read" in str(refusal.value)
+    assert "designer record is missing" in str(refusal.value)
+
+
+def test_unreadable_form_properties_report_why_they_are_missing() -> None:
+    from xlide_mcp.tools.forms import _safe_properties
+
+    class BrokenProperties:
+        def properties(self) -> dict[str, Any]:
+            raise ValueError("property stream is damaged")
+
+    result = _safe_properties(BrokenProperties())
+    assert "property stream is damaged" in result["_read_error"]
+
+
+def test_unreadable_access_sections_are_not_reported_as_empty() -> None:
+    from xlide_mcp.tools.forms import _sections
+
+    class BrokenSections:
+        @property
+        def sections(self) -> list[Any]:
+            raise ValueError("section directory is damaged")
+
+    sections, error = _sections(BrokenSections())
+    assert sections is None
+    assert "section directory is damaged" in (error or "")
+
+
+def test_form_list_and_read_expose_section_errors(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], with_form: Path
+) -> None:
+    from xlide_mcp.tools import forms
+
+    monkeypatch.setattr(
+        forms, "_sections", lambda _design: (None, "The design sections could not be read")
+    )
+    listed = call("xlide_list_forms", file_path=str(with_form))["forms"][0]
+    assert listed["sections"] is None
+    assert "could not be read" in listed["sections_error"]
+
+    read = call("xlide_read_form", file_path=str(with_form), form_name="Wizard")
+    assert read["sections"] is None
+    assert "could not be read" in read["sections_error"]
+
+
 def test_a_userforms_module_is_reported_as_a_userform(
     call: Callable[..., Any], with_form: Path
 ) -> None:
@@ -41,6 +113,22 @@ def test_a_userforms_module_is_reported_as_a_userform(
     modules = call("xlide_list_modules", file_path=str(with_form))["modules"]
     by_name = {module["name"]: module for module in modules}
     assert by_name["Wizard"]["kind"] == "userform"
+
+
+def test_form_pages_reach_later_forms(call: Callable[..., Any], with_form: Path) -> None:
+    call(
+        "xlide_manage_form", file_path=str(with_form),
+        action="create", form_name="Second",
+    )
+    first = call("xlide_list_forms", file_path=str(with_form), max_results=1)
+    assert first["count"] == 2
+    assert first["next_offset"] == 1
+    second = call(
+        "xlide_list_forms", file_path=str(with_form),
+        max_results=1, offset=first["next_offset"],
+    )
+    assert second["forms"][0]["name"] != first["forms"][0]["name"]
+    assert second["next_offset"] is None
 
 
 def test_renaming_a_userforms_module_is_refused(

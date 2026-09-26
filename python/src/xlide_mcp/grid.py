@@ -45,6 +45,15 @@ Public Function SurveySheets() As String
 End Function
 """
 
+_COUNT_OCCUPIED = """
+Public Function CountOccupied(ByVal sheetName As String, ByVal firstCell As String, _
+                              ByVal rowCount As Long, ByVal columnCount As Long) As Long
+    Dim area As Range
+    Set area = ActiveWorkbook.Worksheets(sheetName).Range(firstCell).Resize(rowCount, columnCount)
+    CountOccupied = Application.WorksheetFunction.CountA(area)
+End Function
+"""
+
 
 @dataclass(frozen=True)
 class Sheet:
@@ -95,18 +104,33 @@ def survey_sheets(path: Path, timeout: float) -> list[Sheet]:
         _open(excel, path, read_only=True)
         result = excel.run_vba(_SHEET_SURVEY, proc="SurveySheets", timeout=timeout)
     _require(result, f"reading the sheets of {path.name}")
+    return _parse_sheet_survey(str(result.value or ""))
+
+
+def _parse_sheet_survey(raw: str) -> list[Sheet]:
+    """Decode Excel's sheet survey without quietly dropping malformed rows."""
     sheets: list[Sheet] = []
-    for line in str(result.value or "").split("\n"):
-        if not line.strip():
+    for line_number, line in enumerate(raw.split("\n"), start=1):
+        line = line.rstrip("\r")
+        if not line:
             continue
         parts = line.split("\t")
-        if len(parts) < 3:
-            continue
+        if len(parts) != 3 or not parts[0] or not parts[1]:
+            raise ToolError(
+                f"Excel returned malformed worksheet details on line {line_number}. "
+                "No sheet list was returned; retry xlide_list_sheets."
+            )
+        visible = parts[2].strip().lower()
+        if visible not in {"true", "false", "-1", "0"}:
+            raise ToolError(
+                f"Excel returned an unknown visibility state for {parts[0]!r}: "
+                f"{parts[2]!r}. No sheet list was returned."
+            )
         sheets.append(
             Sheet(
                 name=parts[0],
-                used_range=parts[1] or "(empty)",
-                hidden=parts[2].strip().lower() not in {"true", "-1"},
+                used_range=parts[1],
+                hidden=visible in {"false", "0"},
             )
         )
     return sheets
@@ -123,7 +147,8 @@ def read_cells(path: Path, sheet: str, cell_range: str, timeout: float) -> list[
 
 
 def write_cells(
-    path: Path, sheet: str, start_cell: str, data: list[list[Any]], timeout: float
+    path: Path, sheet: str, start_cell: str, data: list[list[Any]], timeout: float,
+    *, allow_overwrite: bool = False,
 ) -> dict[str, Any]:
     """Write a block through Excel and save the workbook in its own format.
 
@@ -136,6 +161,25 @@ def write_cells(
             f"Writing cells to {path.suffix} is not offered. Excel can open it, but saving it "
             "back means choosing a format, and the wrong choice drops what the format cannot "
             "hold with the alerts suppressed. Ask the user to save it as .xlsb or .xlsm first."
+        )
+    rows = len(data)
+    columns = max((len(row) for row in data), default=0)
+    if not rows or not columns:
+        raise ToolError("data has no cells to write.")
+    # Run this in a read-only instance that is discarded. The harness injects
+    # support modules for run_vba, which must never be saved with the workbook.
+    with _session() as excel:
+        _open(excel, path, read_only=True)
+        count = excel.run_vba(
+            _COUNT_OCCUPIED, proc="CountOccupied",
+            args=(sheet, start_cell, rows, columns), timeout=timeout,
+        )
+    _require(count, f"checking cells in {path.name}")
+    occupied = int(count.value or 0)
+    if occupied and not allow_overwrite:
+        raise ToolError(
+            f"Writing at {start_cell} would overwrite {occupied} cells. Nothing was written. "
+            "Read the range, ask the user, then call again with allow_overwrite=true."
         )
     before = _module_names(path)
     with _session() as excel:
@@ -161,7 +205,7 @@ def write_cells(
             "there before and is not the user's. The workbook has been saved with them; "
             "remove them with xlide_delete_module and report this."
         )
-    return {"saved": True, "saved_as": str(path)}
+    return {"saved": True, "saved_as": str(path), "cells_overwritten": occupied}
 
 
 def _module_names(path: Path) -> set[str]:

@@ -58,6 +58,120 @@ def test_read_module_slice(call: Callable[..., Any], workbook: Path) -> None:
     assert "note" in sliced
 
 
+def test_read_empty_module_returns_an_empty_body(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    call("xlide_write_module", file_path=str(workbook), module_name="Blank", source="")
+    read = call("xlide_read_module", file_path=str(workbook), module_name="Blank")
+    assert read["source"] == ""
+    assert read["total_lines"] == 0
+    assert read["first_line"] == 0
+    assert read["last_line"] == 0
+    assert read["content_token"]
+
+
+def test_read_module_refuses_a_reversed_slice(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_read_module", file_path=str(workbook), module_name="Helpers",
+            start_line=5, end_line=3,
+        )
+    assert "before start_line" in refusal.value.message
+
+
+def test_read_selected_ranges_and_edit_them_together(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    selected = call(
+        "xlide_read_module", file_path=str(workbook), module_name="Helpers",
+        line_ranges=[[3, 4], [7, 10]],
+    )
+    assert len(selected["sections"]) == 2
+    assert "AddNums = a + b" in selected["sections"][0]["source"]
+    assert "Debug.Print" in selected["sections"][1]["source"]
+    written = call(
+        "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+        expected_content_token=selected["content_token"],
+        edits=[
+            {"start_line": 4, "end_line": 4, "replacement": "    AddNums = a * b"},
+            {"start_line": 10, "end_line": 10,
+             "replacement": '    Debug.Print "hi " & who'},
+        ],
+    )
+    assert written["edits_applied"] == 2
+    again = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
+    assert "AddNums = a * b" in again["source"]
+    assert 'Debug.Print "hi " & who' in again["source"]
+
+
+def test_edit_preview_keeps_file_and_token_usable(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    selected = call(
+        "xlide_read_module", file_path=str(workbook), module_name="Helpers",
+    )
+    original_file = workbook.read_bytes()
+    edit = {"start_line": 4, "end_line": 4, "replacement": "    AddNums = a * b"}
+    preview = call(
+        "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+        expected_content_token=selected["content_token"], edits=[edit],
+        preview_only=True,
+    )
+    assert preview["applied"] is False
+    assert preview["saved"] is False
+    assert preview["content_token"] == selected["content_token"]
+    assert preview["lines_added"] == 1
+    assert "+    AddNums = a * b" in preview["diff"]
+    assert workbook.read_bytes() == original_file
+
+    applied = call(
+        "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+        expected_content_token=preview["content_token"], edits=[edit],
+    )
+    assert applied["applied"] is True
+    assert applied["saved"] is True
+    assert "+    AddNums = a * b" in applied["diff"]
+
+
+def test_selected_ranges_reject_header_line_numbers(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_read_module", file_path=str(workbook), module_name="Helpers",
+            line_ranges=[[1, 2]], include_header=True,
+        )
+    assert "body line numbers" in refusal.value.message
+
+
+def test_edit_refuses_overlap_and_stale_token(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    read = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
+    with pytest.raises(ToolFailure) as overlap:
+        call(
+            "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+            expected_content_token=read["content_token"],
+            edits=[{"start_line": 3, "end_line": 4, "replacement": "x"},
+                   {"start_line": 4, "end_line": 5, "replacement": "y"}],
+        )
+    assert "overlap" in overlap.value.message
+    call(
+        "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+        expected_content_token=read["content_token"],
+        edits=[{"start_line": 4, "end_line": 4, "replacement": "    AddNums = a * b"}],
+    )
+    with pytest.raises(ToolFailure) as stale:
+        call(
+            "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+            expected_content_token=read["content_token"],
+            edits=[{"start_line": 4, "end_line": 4, "replacement": "    AddNums = a - b"}],
+        )
+    assert "changed since it was read" in stale.value.message
+
+
 def test_write_module_round_trip(call: Callable[..., Any], workbook: Path) -> None:
     read = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
     edited = read["source"].replace("a + b", "a + b + 0")
@@ -76,6 +190,23 @@ def test_write_module_round_trip(call: Callable[..., Any], workbook: Path) -> No
     again = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
     assert "a + b + 0" in again["source"]
     assert again["content_token"] == written["content_token"]
+
+
+def test_identical_module_write_skips_saving(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    read = call("xlide_read_module", file_path=str(workbook), module_name="Helpers")
+    original_file = workbook.read_bytes()
+    result = call(
+        "xlide_write_module", file_path=str(workbook), module_name="Helpers",
+        source=read["source"].replace("\r\n", "\n"),
+        expected_content_token=read["content_token"],
+    )
+    assert result["changed"] is False
+    assert result["saved"] is False
+    assert result["diff"] == "(no change)"
+    assert result["content_token"] == read["content_token"]
+    assert workbook.read_bytes() == original_file
 
 
 def test_a_write_reports_the_diff_of_what_landed(
@@ -248,14 +379,48 @@ def test_rename_and_delete(call: Callable[..., Any], workbook: Path) -> None:
     assert "Tools" not in names
 
 
+def test_delete_refuses_when_shape_callers_cannot_be_checked(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], workbook: Path
+) -> None:
+    from xlide_mcp import shapes
+
+    def broken_shapes(_path: Path) -> Any:
+        raise ValueError("drawing part is damaged")
+
+    monkeypatch.setattr(shapes, "read_sheet_shapes", broken_shapes)
+    with pytest.raises(ToolFailure) as refusal:
+        call("xlide_delete_module", file_path=str(workbook), module_name="Helpers")
+    assert "Could not check which shapes call" in refusal.value.message
+    assert "Nothing was deleted" in refusal.value.message
+    assert "Helpers" in {
+        module["name"]
+        for module in call("xlide_list_modules", file_path=str(workbook))["modules"]
+    }
+
+
 def test_list_procedures_finds_both_kinds(call: Callable[..., Any], workbook: Path) -> None:
     listed = call("xlide_list_procedures", file_path=str(workbook), module_name="Helpers")
+    assert listed["content_token"] == call(
+        "xlide_read_module", file_path=str(workbook), module_name="Helpers"
+    )["content_token"]
     by_name = {p["name"]: p for p in listed["procedures"]}
     assert by_name["AddNums"]["kind"] == "Function"
     assert by_name["Greet"]["kind"] == "Sub"
     assert by_name["AddNums"]["line"] == SAMPLE_MODULE.splitlines().index(
         "Public Function AddNums(ByVal a As Long, ByVal b As Long) As Long"
     ) + 1
+    first = call(
+        "xlide_list_procedures", file_path=str(workbook), module_name="Helpers",
+        max_results=1,
+    )
+    assert first["count"] == 2
+    assert first["next_offset"] == 1
+    second = call(
+        "xlide_list_procedures", file_path=str(workbook), module_name="Helpers",
+        offset=first["next_offset"], max_results=1,
+    )
+    assert second["procedures"][0]["name"] == "Greet"
+    assert second["next_offset"] is None
 
 
 def test_list_procedures_joins_a_continued_signature(
@@ -282,6 +447,7 @@ def test_search_modules(call: Callable[..., Any], workbook: Path) -> None:
     hits = call("xlide_search_modules", file_path=str(workbook), query="addnums")
     assert hits["match_count"] >= 1
     assert all(hit["module"] == "Helpers" for hit in hits["matches"])
+    assert hits["content_tokens"]["Helpers"]
 
     none = call(
         "xlide_search_modules", file_path=str(workbook), query="addnums", match_case=True
@@ -295,6 +461,49 @@ def test_search_modules(call: Callable[..., Any], workbook: Path) -> None:
         is_regex=True,
     )
     assert regex["match_count"] == 2
+
+
+def test_search_token_can_guard_a_line_edit(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    hits = call(
+        "xlide_search_modules", file_path=str(workbook), query="AddNums = a + b",
+    )
+    assert hits["matches"] == [
+        {"module": "Helpers", "line": 4, "text": "AddNums = a + b"}
+    ]
+    edited = call(
+        "xlide_edit_module", file_path=str(workbook), module_name="Helpers",
+        expected_content_token=hits["content_tokens"]["Helpers"],
+        edits=[{"start_line": hits["matches"][0]["line"],
+                "end_line": hits["matches"][0]["line"],
+                "replacement": "    AddNums = a * b"}],
+    )
+    assert edited["applied"] is True
+    assert "+    AddNums = a * b" in edited["diff"]
+
+
+def test_search_pages_through_all_matches(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    first = call(
+        "xlide_search_modules", file_path=str(workbook), query="AddNums",
+        max_results=1,
+    )
+    assert first["match_count"] == 1
+    assert first["total_match_count"] == 2
+    assert first["truncated"] is True
+    assert first["next_offset"] == 1
+
+    second = call(
+        "xlide_search_modules", file_path=str(workbook), query="AddNums",
+        max_results=1, offset=first["next_offset"],
+    )
+    assert second["match_count"] == 1
+    assert second["total_match_count"] == 2
+    assert second["matches"][0]["line"] != first["matches"][0]["line"]
+    assert second["truncated"] is False
+    assert second["next_offset"] is None
 
 
 def test_search_rejects_a_bad_pattern(call: Callable[..., Any], workbook: Path) -> None:

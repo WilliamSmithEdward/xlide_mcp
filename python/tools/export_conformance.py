@@ -110,6 +110,9 @@ BROKEN = CRLF.join(
         "",
     ]
 )
+TWO_ERRORS = BROKEN.replace(
+    '    n = "not a number"', '    n = "first"' + CRLF + '    n = "second"'
+)
 
 FIXTURES: dict[str, Any] = {
     "workbook": {
@@ -155,6 +158,7 @@ FIXTURES: dict[str, Any] = {
         "tables": [
             {"name": "Orders", "columns": [{"name": "Id", "type": "long"}]},
         ],
+        "queries": [{"name": "AllOrders", "sql": "SELECT * FROM Orders;"}],
     },
     "vb6_project": {
         "kind": "visual-basic-6-project",
@@ -407,6 +411,50 @@ def cases() -> list[dict[str, Any]]:
             ],
         )
     )
+    out.append(case(
+        "list-sheets.reports-the-file-backed-grid",
+        "A caller needs a real sheet name and source before choosing a cell range.",
+        "workbook",
+        [step("xlide_list_sheets", {"file_path": "${fixture}"})],
+        [
+            {"path": "source", "equals": "file"},
+            {"path": "sheets[0].name", "equals": "Sheet1"},
+            {"path": "named_ranges", "type": "array"},
+        ],
+    ))
+    out.append(case(
+        "validate-project.distinguishes-a-clean-container",
+        "Structural validation and source analysis answer different questions; a clean "
+        "container reports a supported check with no structural problems.",
+        "workbook",
+        [step("xlide_validate_project", {"file_path": "${fixture}"})],
+        [
+            {"path": "supported", "equals": True},
+            {"path": "problem_count", "equals": 0},
+            {"path": "verdict", "equals": "clean"},
+        ],
+    ))
+    out.append(case(
+        "page-setup.reports-print-settings",
+        "The sheet's print settings are readable without opening Excel.",
+        "workbook",
+        [step("xlide_page_setup", {"file_path": "${fixture}", "sheet": "Sheet1"})],
+        [
+            {"path": "sheet", "equals": "Sheet1"},
+            {"path": "margins", "type": "object"},
+            {"path": "print_area", "type": "array"},
+        ],
+    ))
+    out.append(case(
+        "rules.exposes-the-diagnostic-catalogue",
+        "A caller can discover the rule catalogue before explaining an analysis finding.",
+        None,
+        [step("xlide_rules", {})],
+        [
+            {"path": "count", "at_least": 100},
+            {"path": "rules", "at_least": 100},
+        ],
+    ))
     out.append(
         case(
             "read-module.strips-the-attribute-header",
@@ -513,8 +561,164 @@ def cases() -> list[dict[str, Any]]:
             ],
         )
     )
+    out.append(
+        case(
+            "list-procedures.token-guards-an-edit",
+            "A procedure listing returns its module token, so its line can be edited "
+            "without a separate module read.",
+            "workbook",
+            [
+                step(
+                    "xlide_list_procedures",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+                step(
+                    "xlide_edit_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "expected_content_token": "${step[0].content_token}",
+                     "edits": [
+                         {"start_line": "${step[0].procedures[0].line}",
+                          "end_line": "${step[0].procedures[0].line}",
+                          "replacement": (
+                              "Private Function AddNums(ByVal a As Long, "
+                              "ByVal b As Long) As Long"
+                          )},
+                     ]},
+                ),
+            ],
+            [{"path": "applied", "equals": True},
+             {"path": "diff", "contains": "+Private Function AddNums"}],
+        )
+    )
+    out.append(
+        case(
+            "read-module.empty-body-is-readable",
+            "An empty module still returns its token and an empty body, so it can be edited.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Blank", "source": ""},
+                ),
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Blank"},
+                ),
+            ],
+            [{"path": "source", "equals": ""},
+             {"path": "total_lines", "equals": 0},
+             {"path": "first_line", "equals": 0},
+             {"path": "content_token", "type": "string"}],
+        )
+    )
+    out.append(
+        case(
+            "read-module.refuses-reversed-slice",
+            "A reversed line range is refused with a reason rather than returning empty text.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "start_line": 5, "end_line": 3},
+                    error_contains="end_line 3 is before start_line 5",
+                ),
+            ],
+        )
+    )
+
+    out.append(
+        case(
+            "search-modules.token-guards-a-line-edit",
+            "Search returns both a matching line and its module token, so a caller can "
+            "make a guarded edit without reading the module again.",
+            "workbook",
+            [
+                step(
+                    "xlide_search_modules",
+                    {"file_path": "${fixture}", "query": "AddNums = a + b"},
+                ),
+                step(
+                    "xlide_edit_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "expected_content_token": "${step[0].content_tokens.Helpers}",
+                     "edits": [
+                         {"start_line": "${step[0].matches[0].line}",
+                          "end_line": "${step[0].matches[0].line}",
+                          "replacement": "    AddNums = a * b"},
+                     ]},
+                ),
+            ],
+            [{"path": "applied", "equals": True},
+             {"path": "diff", "contains": "+    AddNums = a * b"}],
+        )
+    )
+    out.append(
+        case(
+            "search-modules.pages-through-matches",
+            "A broad search reports the full match count and a next offset, so callers "
+            "can reach matches after the first page.",
+            "workbook",
+            [
+                step(
+                    "xlide_search_modules",
+                    {"file_path": "${fixture}", "query": "AddNums", "max_results": 1},
+                ),
+                step(
+                    "xlide_search_modules",
+                    {"file_path": "${fixture}", "query": "AddNums", "max_results": 1,
+                     "offset": "${step[0].next_offset}"},
+                ),
+            ],
+            [{"path": "match_count", "equals": 1},
+             {"path": "total_match_count", "equals": 2},
+             {"path": "offset", "equals": 1},
+             {"path": "next_offset", "type": "null"},
+             {"path": "matches[0].line", "equals": 4}],
+        )
+    )
 
     # ---------------------------------------------------------------- writing
+    out.append(
+        case(
+            "edit-module.uses-selected-lines-and-a-token",
+            "Several small edits use original line numbers. A preview returns the unchanged "
+            "token, which still guards the following save.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "line_ranges": [[3, 4], [7, 10]]},
+                ),
+                step(
+                    "xlide_edit_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "expected_content_token": "${step[0].content_token}",
+                     "preview_only": True,
+                     "edits": [
+                         {"start_line": 4, "end_line": 4,
+                          "replacement": "    AddNums = a * b"},
+                         {"start_line": 10, "end_line": 10,
+                          "replacement": '    Debug.Print "hi " & who'},
+                     ]},
+                ),
+                step(
+                    "xlide_edit_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "expected_content_token": "${step[1].content_token}",
+                     "edits": [
+                         {"start_line": 4, "end_line": 4,
+                          "replacement": "    AddNums = a * b"},
+                         {"start_line": 10, "end_line": 10,
+                          "replacement": '    Debug.Print "hi " & who'},
+                     ]},
+                ),
+            ],
+            [{"path": "edits_applied", "equals": 2},
+             {"path": "diff", "contains": "+    AddNums = a * b"}],
+        )
+    )
     out.append(
         case(
             "write-module.round-trips-and-reissues-the-token",
@@ -544,6 +748,30 @@ def cases() -> list[dict[str, Any]]:
                 {"path": "source", "contains": "a + b + 1"},
                 {"path": "content_token", "equals": "${step[1].content_token}"},
             ],
+        )
+    )
+    out.append(
+        case(
+            "write-module.identical-source-skips-save",
+            "A full module read preserves its final newline, and writing that source back "
+            "does not rewrite the Office file.",
+            "workbook",
+            [
+                step(
+                    "xlide_read_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers"},
+                ),
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers",
+                     "source": "${step[0].source}",
+                     "expected_content_token": "${step[0].content_token}"},
+                ),
+            ],
+            [{"path": "changed", "equals": False},
+             {"path": "saved", "equals": False},
+             {"path": "diff", "equals": "(no change)"},
+             {"path": "content_token", "equals": "${step[0].content_token}"}],
         )
     )
     out.append(
@@ -824,6 +1052,35 @@ def cases() -> list[dict[str, Any]]:
     )
     out.append(
         case(
+            "analyze.pages-through-findings",
+            "A bounded analysis result reaches later findings without changing the "
+            "project-wide severity counts.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Broken",
+                     "source": TWO_ERRORS},
+                ),
+                step(
+                    "xlide_analyze",
+                    {"file_path": "${fixture}", "module_name": "Broken",
+                     "min_severity": "error", "max_results": 1},
+                ),
+                step(
+                    "xlide_analyze",
+                    {"file_path": "${fixture}", "module_name": "Broken",
+                     "min_severity": "error", "max_results": 1,
+                     "offset": "${step[1].next_offset}"},
+                ),
+            ],
+            [{"path": "matching_count", "at_least": 2},
+             {"path": "offset", "equals": 1},
+             {"path": "problems", "at_least": 1}],
+        )
+    )
+    out.append(
+        case(
             "analyze-source.needs-no-file",
             "Checking generated code before writing it costs nothing and catches the compile "
             "errors that would otherwise surface in front of the user.",
@@ -833,6 +1090,24 @@ def cases() -> list[dict[str, Any]]:
                 {"path": "verdict", "equals": "errors found"},
                 {"path": "counts.error", "at_least": 1},
             ],
+        )
+    )
+    out.append(
+        case(
+            "analyze-source.pages-through-findings",
+            "A draft source with many findings can be inspected a page at a time.",
+            None,
+            [
+                step("xlide_analyze_source", {"source": TWO_ERRORS, "max_results": 1}),
+                step(
+                    "xlide_analyze_source",
+                    {"source": TWO_ERRORS, "max_results": 1,
+                     "offset": "${step[0].next_offset}"},
+                ),
+            ],
+            [{"path": "matching_count", "at_least": 2},
+             {"path": "offset", "equals": 1},
+             {"path": "problems", "at_least": 1}],
         )
     )
     out.append(
@@ -895,6 +1170,23 @@ def cases() -> list[dict[str, Any]]:
                 {"path": "files", "contains": "no VBA project by design"},
                 {"path": "files", "contains": "\"readable\": false"},
             ],
+        )
+    )
+    out.append(
+        case(
+            "list-projects.offset-past-last-page-is-empty",
+            "An offset beyond the last file returns an empty page and the total count.",
+            "workbook",
+            [
+                step("xlide_list_projects", {"max_results": 1}),
+                step(
+                    "xlide_list_projects",
+                    {"max_results": 1, "offset": "${step[0].count}"},
+                ),
+            ],
+            [{"path": "count", "equals": 1},
+             {"path": "files", "equals": []},
+             {"path": "next_offset", "type": "null"}],
         )
     )
     out.append(
@@ -986,8 +1278,8 @@ def cases() -> list[dict[str, Any]]:
     out.append(
         case(
             "cells.report-what-was-overwritten",
-            "Overwriting data is the user's decision, and they can only make it if the "
-            "agent is told what it displaced.",
+            "Overwriting data is the user's decision. An explicit flag is required, and "
+            "the result says what it displaced.",
             "plain_workbook",
             [
                 step(
@@ -1006,12 +1298,34 @@ def cases() -> list[dict[str, Any]]:
                         "sheet": "Sheet1",
                         "start_cell": "A1",
                         "data": [["second"], ["third"]],
+                        "allow_overwrite": True,
                     },
                 ),
             ],
             [
                 {"path": "cells_overwritten", "equals": 2},
                 {"path": "formulas_replaced", "equals": 1},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "cells.refuse-an-unapproved-overwrite",
+            "An occupied cell or formula is never replaced before the caller explicitly "
+            "allows it after asking the user.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {"file_path": "${fixture}", "sheet": "Sheet1", "start_cell": "A1",
+                     "data": [["first"]]},
+                ),
+                step(
+                    "xlide_write_cells",
+                    {"file_path": "${fixture}", "sheet": "Sheet1", "start_cell": "A1",
+                     "data": [["second"]]},
+                    error_contains="allow_overwrite=true",
+                ),
             ],
         )
     )
@@ -1054,6 +1368,82 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "query", "equals": "Numbers"},
                 {"path": "formula", "contains": "{1..20}"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "power-query.list-pages-reach-later-queries",
+            "A bounded query list can return a later query on the next page.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_query",
+                    {"file_path": "${fixture}", "action": "set",
+                     "query_name": "Totals", "formula": "let Source = 1 in Source"},
+                ),
+                step(
+                    "xlide_list_queries",
+                    {"file_path": "${fixture}", "max_results": 1},
+                ),
+                step(
+                    "xlide_list_queries",
+                    {"file_path": "${fixture}", "max_results": 1,
+                     "offset": "${step[1].next_offset}"},
+                ),
+            ],
+            [{"path": "count", "equals": 2},
+             {"path": "queries[0].name", "equals": "Totals"},
+             {"path": "next_offset", "type": "null"}],
+        )
+    )
+    out.append(
+        case(
+            "power-query.reads-a-formula-slice-with-a-whole-query-token",
+            "A long M formula can be read by line without losing the token that guards "
+            "the whole query.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_write_query",
+                    {"file_path": "${fixture}", "action": "set",
+                     "query_name": "Numbers",
+                     "formula": "let\n    Source = {1..10}\nin\n    Source"},
+                ),
+                step(
+                    "xlide_read_query",
+                    {"file_path": "${fixture}", "query_name": "Numbers",
+                     "start_line": 2, "end_line": 2},
+                ),
+            ],
+            [{"path": "formula", "equals": "    Source = {1..10}"},
+             {"path": "total_lines", "equals": 4},
+             {"path": "content_token", "type": "string"}],
+        )
+    )
+    out.append(
+        case(
+            "power-query.refuses-a-stale-token",
+            "A query edit refuses to replace M that changed after the caller read it.",
+            "plain_workbook",
+            [
+                step(
+                    "xlide_read_query",
+                    {"file_path": "${fixture}", "query_name": "Numbers"},
+                ),
+                step(
+                    "xlide_write_query",
+                    {"file_path": "${fixture}", "action": "set",
+                     "query_name": "Numbers", "formula": "let Source = {1..20} in Source",
+                     "expected_content_token": "${step[0].content_token}"},
+                ),
+                step(
+                    "xlide_write_query",
+                    {"file_path": "${fixture}", "action": "set",
+                     "query_name": "Numbers", "formula": "let Source = {1..30} in Source",
+                     "expected_content_token": "${step[0].content_token}"},
+                    error_contains="changed since it was read",
+                ),
             ],
         )
     )
@@ -1106,6 +1496,27 @@ def cases() -> list[dict[str, Any]]:
     )
     out.append(
         case(
+            "export.unchanged-files-are-not-rewritten",
+            "Applying an export twice reports zero files written the second time.",
+            "workbook",
+            [
+                step(
+                    "xlide_export_modules",
+                    {"file_path": "${fixture}", "export_folder": "${folder:vba}",
+                     "apply": True},
+                ),
+                step(
+                    "xlide_export_modules",
+                    {"file_path": "${fixture}", "export_folder": "${folder:vba}",
+                     "apply": True},
+                ),
+            ],
+            [{"path": "files_written", "equals": 0},
+             {"path": "files_unchanged", "at_least": 1}],
+        )
+    )
+    out.append(
+        case(
             "import.previews-before-it-writes",
             "The rule agents get wrong most often stated as a guard: an import reports what "
             "it would change and writes nothing, so an edited export is still only a copy "
@@ -1129,6 +1540,29 @@ def cases() -> list[dict[str, Any]]:
                 {"path": "applied", "equals": False},
                 {"path": "plan", "at_least": 1},
             ],
+        )
+    )
+    out.append(
+        case(
+            "import.identical-modules-skip-save",
+            "Applying an export without edits reports no changes and does not rewrite "
+            "the Office file.",
+            "workbook",
+            [
+                step(
+                    "xlide_export_modules",
+                    {"file_path": "${fixture}", "export_folder": "${folder:vba}",
+                     "apply": True},
+                ),
+                step(
+                    "xlide_import_modules",
+                    {"file_path": "${fixture}", "source_folder": "${folder:vba}",
+                     "apply": True},
+                ),
+            ],
+            [{"path": "applied", "equals": True},
+             {"path": "modules_changed", "equals": 0},
+             {"path": "saved", "equals": False}],
         )
     )
 
@@ -1198,6 +1632,23 @@ def cases() -> list[dict[str, Any]]:
             [
                 {"path": "tables", "contains": '"name": "Orders"'},
                 {"path": "tables", "not_contains": "MSys"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "access.saved-query-sql-can-be-read-in-character-pages",
+            "A long saved query needs a bounded read that returns its SQL without "
+            "discarding the rest of the text.",
+            "access_database",
+            [step(
+                "xlide_read_access_query",
+                {"file_path": "${fixture}", "query_name": "AllOrders", "max_chars": 6},
+            )],
+            [
+                {"path": "sql", "equals": "SELECT"},
+                {"path": "next_offset", "equals": 6},
+                {"path": "content_token", "starts_with": "xlide1:"},
             ],
         )
     )
@@ -1407,6 +1858,60 @@ def cases() -> list[dict[str, Any]]:
     )
     out.append(
         case(
+            "forms.control-pages-reach-later-controls",
+            "A form read with a one-control page gives a next offset that reaches the "
+            "next control.",
+            "workbook_with_a_form",
+            [
+                step(
+                    "xlide_edit_form",
+                    {"file_path": "${fixture}", "form_name": "Wizard",
+                     "action": "add_control", "control_name": "Cancel",
+                     "control_type": "CommandButton"},
+                ),
+                step(
+                    "xlide_read_form",
+                    {"file_path": "${fixture}", "form_name": "Wizard",
+                     "max_controls": 1},
+                ),
+                step(
+                    "xlide_read_form",
+                    {"file_path": "${fixture}", "form_name": "Wizard",
+                     "max_controls": 1, "offset": "${step[1].next_offset}"},
+                ),
+            ],
+            [{"path": "control_count", "equals": 2},
+             {"path": "controls[0].name", "equals": "Cancel"},
+             {"path": "next_offset", "type": "null"}],
+        )
+    )
+    out.append(
+        case(
+            "forms.form-pages-reach-later-designs",
+            "A large form list can be read in pages without hiding later designs.",
+            "workbook_with_a_form",
+            [
+                step(
+                    "xlide_manage_form",
+                    {"file_path": "${fixture}", "action": "create", "form_name": "Second"},
+                ),
+                step(
+                    "xlide_list_forms",
+                    {"file_path": "${fixture}", "max_results": 1},
+                ),
+                step(
+                    "xlide_list_forms",
+                    {"file_path": "${fixture}", "max_results": 1,
+                     "offset": "${step[1].next_offset}"},
+                ),
+            ],
+            [{"path": "count", "equals": 2},
+             {"path": "forms[0].name", "equals": "Second"},
+             {"path": "next_offset", "type": "null"}],
+        )
+    )
+    out.append(
+        case(
             "forms.renaming-a-userforms-module-is-refused",
             "Renaming only the module leaves a storage with no module, which the host does "
             "not show, and a module with no storage, which is a class. The form has silently "
@@ -1532,6 +2037,43 @@ def cases() -> list[dict[str, Any]]:
             ],
         )
     )
+    out.append(
+        case(
+            "shapes.sheet-pages-reach-later-shapes",
+            "A drawing layer with several shapes returns a next offset for one sheet.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_list_shapes",
+                    {"file_path": "${fixture}", "sheet": "Controls",
+                     "max_results": 1},
+                ),
+                step(
+                    "xlide_list_shapes",
+                    {"file_path": "${fixture}", "sheet": "Controls",
+                     "max_results": 1, "offset": "${step[0].next_offset}"},
+                ),
+            ],
+            [{"path": "shape_count", "equals": 3},
+             {"path": "offset", "equals": 1},
+             {"path": "sheets[0].shapes", "at_least": 1},
+             {"path": "next_offset", "equals": 2}],
+        )
+    )
+    out.append(
+        case(
+            "shapes.offset-needs-one-sheet",
+            "An offset without a sheet would ambiguously skip shapes on every sheet.",
+            "shapes_workbook",
+            [
+                step(
+                    "xlide_list_shapes",
+                    {"file_path": "${fixture}", "offset": 1},
+                    error_contains="Set sheet when using offset",
+                ),
+            ],
+        )
+    )
 
     out.append(
         case(
@@ -1650,6 +2192,43 @@ def cases() -> list[dict[str, Any]]:
                 )
             ],
             [{"path": "applied", "contains": "fill"}],
+        )
+    )
+    out.append(
+        case(
+            "format-cells.merge-refuses-to-discard-content-without-opt-in",
+            "A merge keeps only the top-left cell. Existing values or formulas in its "
+            "other cells require an explicit overwrite decision before they are cleared.",
+            "workbook",
+            [
+                step(
+                    "xlide_write_cells",
+                    {
+                        "file_path": "${fixture}", "sheet": "Sheet1", "start_cell": "A1",
+                        "data": [["Keep", "=1+1", "Other"]],
+                    },
+                ),
+                step(
+                    "xlide_format_cells",
+                    {
+                        "file_path": "${fixture}", "sheet": "Sheet1", "cell_range": "A1:C1",
+                        "merge": "merge",
+                    },
+                    error_contains="allow_overwrite=true",
+                ),
+                step(
+                    "xlide_format_cells",
+                    {
+                        "file_path": "${fixture}", "sheet": "Sheet1", "cell_range": "A1:C1",
+                        "merge": "merge", "allow_overwrite": True,
+                    },
+                ),
+            ],
+            [
+                {"path": "cells_cleared", "equals": 2},
+                {"path": "formulas_cleared", "equals": 1},
+                {"path": "saved", "equals": True},
+            ],
         )
     )
 
@@ -1836,6 +2415,131 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    out.append(case(
+        "list-procedures.reaches-the-second-page",
+        "A long module's later procedures remain reachable after a bounded first page.",
+        "workbook",
+        [step("xlide_list_procedures", {
+            "file_path": "${fixture}", "module_name": "Helpers", "offset": 1,
+            "max_results": 1,
+        })],
+        [
+            {"path": "count", "equals": 2},
+            {"path": "procedures[0].name", "equals": "Greet"},
+            {"path": "next_offset", "type": "null"},
+        ],
+    ))
+
+    out.append(case(
+        "access-catalog.reaches-later-tables",
+        "A database with system tables can list tables past the first page.",
+        "access_database",
+        [step("xlide_access_catalog", {
+            "file_path": "${fixture}", "include": "tables", "include_system": True,
+            "offset": 1, "max_results": 1,
+        })],
+        [
+            {"path": "counts.tables", "at_least": 2},
+            {"path": "tables", "at_least": 1},
+            {"path": "offset", "equals": 1},
+        ],
+    ))
+
+    # ------------------------------------------------------- feature list pages
+    feature_pages = [
+        (
+            "table", "xlide_manage_table", "tables",
+            [
+                step("xlide_write_cells", {
+                    "file_path": "${fixture}", "sheet": "Sheet1", "start_cell": "A1",
+                    "data": [["First", "Second"], [1, 2]],
+                }),
+                step("xlide_manage_table", {
+                    "file_path": "${fixture}", "action": "add", "sheet": "Sheet1",
+                    "table_name": "FirstTable", "cell_range": "A1:A2",
+                }),
+                step("xlide_manage_table", {
+                    "file_path": "${fixture}", "action": "add", "sheet": "Sheet1",
+                    "table_name": "SecondTable", "cell_range": "B1:B2",
+                }),
+            ],
+            {}, "tables[0].name", "SecondTable",
+        ),
+        (
+            "name", "xlide_manage_name", "names",
+            [
+                step("xlide_manage_name", {
+                    "file_path": "${fixture}", "action": "add", "name": "FirstName",
+                    "refers_to": "Sheet1!$A$1",
+                }),
+                step("xlide_manage_name", {
+                    "file_path": "${fixture}", "action": "add", "name": "SecondName",
+                    "refers_to": "Sheet1!$B$1",
+                }),
+            ],
+            {}, "names[0].name", "SecondName",
+        ),
+        (
+            "validation", "xlide_manage_validation", "validations",
+            [
+                step("xlide_manage_validation", {
+                    "file_path": "${fixture}", "sheet": "Sheet1", "action": "add",
+                    "cell_range": reference, "formula1": "Yes,No",
+                }) for reference in ("C1:C2", "D1:D2")
+            ],
+            {"sheet": "Sheet1"}, "validations[0].ranges[0]", "D1:D2",
+        ),
+        (
+            "conditional-format", "xlide_manage_conditional_format", "formats",
+            [
+                step("xlide_manage_conditional_format", {
+                    "file_path": "${fixture}", "sheet": "Sheet1", "action": "add",
+                    "cell_range": reference, "value": "1", "fill_color": "FFC7CE",
+                }) for reference in ("C1:C2", "D1:D2")
+            ],
+            {"sheet": "Sheet1"}, "formats[0].range", "D1:D2",
+        ),
+        (
+            "hyperlink", "xlide_manage_hyperlink", "hyperlinks",
+            [
+                step("xlide_manage_hyperlink", {
+                    "file_path": "${fixture}", "sheet": "Sheet1", "action": "add",
+                    "cell_range": reference, "target": "https://example.com/" + reference,
+                }) for reference in ("E1", "E2")
+            ],
+            {"sheet": "Sheet1"}, "hyperlinks[0].range", "E2",
+        ),
+        (
+            "comment", "xlide_manage_comment", "comments",
+            [
+                step("xlide_manage_comment", {
+                    "file_path": "${fixture}", "sheet": "Sheet1", "action": "set",
+                    "cell": reference, "text": "Note for " + reference,
+                }) for reference in ("E1", "E2")
+            ],
+            {"sheet": "Sheet1"}, "comments[0].cell", "E2",
+        ),
+    ]
+    for label, tool, field, setup, filters, item_path, expected in feature_pages:
+        out.append(case(
+            f"manage-{label}.list-reaches-the-second-page",
+            "A bounded list returns a next offset so every item remains reachable.",
+            "workbook",
+            [
+                *setup,
+                step(tool, {"file_path": "${fixture}", "max_results": 1, **filters}),
+                step(tool, {"file_path": "${fixture}", "offset": 1,
+                            "max_results": 1, **filters}),
+            ],
+            [
+                {"path": "count", "equals": 2},
+                {"path": "offset", "equals": 1},
+                {"path": "next_offset", "type": "null"},
+                {"path": field, "at_least": 1},
+                {"path": item_path, "equals": expected},
+            ],
+        ))
+
     # ------------------------------------------------------------ git changes
     out.append(
         case(
@@ -1946,8 +2650,29 @@ def cases() -> list[dict[str, Any]]:
             [step("xlide_list_modules", {"file_path": "${fixture}"})],
             [
                 {"path": "count", "at_least": 320},
-                {"path": "note", "contains": "are not"},
+                {"path": "next_offset", "type": "number"},
+                {"path": "note", "contains": "next page"},
             ],
+        )
+    )
+    out.append(
+        case(
+            "bounds.module-pages-reach-past-the-bound",
+            "A module after the first bounded page remains reachable by offset.",
+            "crowded_workbook",
+            [
+                step(
+                    "xlide_list_modules",
+                    {"file_path": "${fixture}", "max_results": 1, "offset": 318},
+                ),
+                step(
+                    "xlide_list_modules",
+                    {"file_path": "${fixture}", "max_results": 1,
+                     "offset": "${step[0].next_offset}"},
+                ),
+            ],
+            [{"path": "modules[0].name", "equals": "Mod316"},
+             {"path": "next_offset", "type": "number"}],
         )
     )
     out.append(

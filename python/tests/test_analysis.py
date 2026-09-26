@@ -50,6 +50,40 @@ def test_a_type_mismatch_is_reported_with_a_line(
     assert "next_step" in report
 
 
+def test_analysis_pages_keep_the_full_count(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    source = BROKEN.replace(
+        '    n = "not a number"',
+        '    n = "first"\n    n = "second"',
+    )
+    call(
+        "xlide_write_module", file_path=str(workbook), module_name="Broken",
+        source=source,
+    )
+    first = call(
+        "xlide_analyze", file_path=str(workbook), min_severity="error",
+        module_name="Broken", max_results=1,
+    )
+    assert first["matching_count"] >= 2
+    assert first["reported"] == 1
+    assert first["next_offset"] == 1
+    second = call(
+        "xlide_analyze", file_path=str(workbook), min_severity="error",
+        module_name="Broken", max_results=1, offset=first["next_offset"],
+    )
+    assert second["counts"] == first["counts"]
+    assert second["problems"][0]["line"] != first["problems"][0]["line"]
+
+    source_first = call("xlide_analyze_source", source=source, max_results=1)
+    assert source_first["matching_count"] >= 2
+    source_second = call(
+        "xlide_analyze_source", source=source, max_results=1,
+        offset=source_first["next_offset"],
+    )
+    assert source_second["problems"][0]["line"] != source_first["problems"][0]["line"]
+
+
 def test_min_severity_filters_without_hiding_the_count(
     call: Callable[..., Any], workbook: Path
 ) -> None:

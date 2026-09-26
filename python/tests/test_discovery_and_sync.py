@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,16 @@ def test_list_projects_skips_office_lock_files(
     assert "~$Budget.xlsm" not in names
 
 
+def test_office_file_pages_reach_later_files(
+    call: Callable[..., Any], workbook: Path, plain_workbook: Path
+) -> None:
+    first = call("xlide_list_projects", max_results=1)
+    assert first["count"] >= 2
+    assert first["next_offset"] == 1
+    second = call("xlide_list_projects", max_results=1, offset=first["next_offset"])
+    assert second["files"][0]["path"] != first["files"][0]["path"]
+
+
 def test_project_info_is_one_shot(
     call: Callable[..., Any], workbook: Path, plain_workbook: Path
 ) -> None:
@@ -52,6 +63,52 @@ def test_project_info_is_one_shot(
     assert plain["vba_readable"] is False
     assert plain["power_query"]["count"] == 1
     assert plain["sheets"][0]["name"] == "Sheet1"
+
+
+def test_failed_form_and_query_reads_are_unknown_not_empty(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], workbook: Path
+) -> None:
+    import pyopenvba
+
+    from xlide_mcp.tools import discovery
+
+    class BrokenForms:
+        def forms(self) -> list[Any]:
+            raise ValueError("form storage is damaged")
+
+    form_result = discovery._form_names(BrokenForms())
+    assert form_result["forms"] is None
+    assert "form storage is damaged" in form_result["forms_error"]
+
+    def broken_queries(_path: Path) -> Any:
+        raise pyopenvba.PowerQueryError("query metadata is damaged")
+
+    monkeypatch.setattr(pyopenvba, "PowerQueryWorkbook", broken_queries)
+    query_result = discovery._query_summary(workbook)
+    assert query_result["count"] is None
+    assert query_result["queries"] is None
+    assert "query metadata is damaged" in query_result["error"]
+
+    monkeypatch.setattr(discovery, "_form_names", lambda _handle: form_result)
+    info = call("xlide_project_info", file_path=str(workbook))
+    assert info["forms"] is None
+    assert info["power_query"]["count"] is None
+    assert "forms_error" in info
+    assert "error" in info["power_query"]
+
+
+def test_unreadable_applied_steps_are_not_reported_as_empty() -> None:
+    from xlide_mcp.tools.powerquery import _steps
+
+    class BrokenQuery:
+        @property
+        def steps(self) -> list[str]:
+            raise ValueError("M expression is incomplete")
+
+    result = _steps(BrokenQuery())
+    assert result["steps"] is None
+    assert "M expression is incomplete" in result["steps_error"]
+    assert "Read the M formula" in result["steps_error"]
 
 
 def test_doctor_answers(call: Callable[..., Any]) -> None:
@@ -77,6 +134,52 @@ def test_validate_project_on_a_healthy_file(call: Callable[..., Any], workbook: 
     report = call("xlide_validate_project", file_path=str(workbook))
     assert report["supported"] is True
     assert report["verdict"] == "clean"
+
+
+def test_structural_problems_can_be_read_in_pages(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], workbook: Path
+) -> None:
+    from contextlib import nullcontext
+
+    from xlide_mcp import project as project_layer
+
+    class DamagedProject:
+        def validate(self) -> list[str]:
+            return [f"problem {index}" for index in range(305)]
+
+    monkeypatch.setattr(project_layer, "open_project", lambda *_args: nullcontext(DamagedProject()))
+    monkeypatch.setattr(project_layer, "has_project", lambda *_args: True)
+
+    first = call("xlide_validate_project", file_path=str(workbook), max_results=2)
+    assert first["problem_count"] == 305
+    assert first["verdict"] == "problems found"
+    assert first["problems"] == ["problem 0", "problem 1"]
+    assert first["next_offset"] == 2
+    assert "offset=2" in first["note"]
+
+    last = call("xlide_validate_project", file_path=str(workbook), offset=304)
+    assert last["problems"] == ["problem 304"]
+    assert last["next_offset"] is None
+
+
+def test_structural_validation_failure_is_not_called_unsupported(
+    monkeypatch: pytest.MonkeyPatch, call: Callable[..., Any], workbook: Path
+) -> None:
+    from contextlib import nullcontext
+
+    from xlide_mcp import project as project_layer
+
+    class DamagedProject:
+        def validate(self) -> list[str]:
+            raise AttributeError("directory record is missing")
+
+    monkeypatch.setattr(project_layer, "open_project", lambda *_args: nullcontext(DamagedProject()))
+    monkeypatch.setattr(project_layer, "has_project", lambda *_args: True)
+
+    with pytest.raises(ToolFailure) as refusal:
+        call("xlide_validate_project", file_path=str(workbook))
+    assert "could not complete" in refusal.value.message
+    assert "directory record is missing" in refusal.value.message
 
 
 def test_create_project_never_overwrites(call: Callable[..., Any], workspace: Path) -> None:
@@ -133,6 +236,80 @@ def test_export_reports_an_unchanged_file_as_unchanged(
     )
     again = call("xlide_export_modules", file_path=str(workbook), export_folder=str(folder))
     assert all(entry["action"] == "unchanged" for entry in again["plan"])
+
+
+def test_applying_unchanged_export_preserves_file_mtime(
+    call: Callable[..., Any], workbook: Path, workspace: Path
+) -> None:
+    folder = workspace / "vba"
+    call(
+        "xlide_export_modules", file_path=str(workbook),
+        export_folder=str(folder), apply=True,
+    )
+    exported = folder / "Helpers.bas"
+    old_time = 946684800
+    os.utime(exported, (old_time, old_time))
+
+    result = call(
+        "xlide_export_modules", file_path=str(workbook),
+        export_folder=str(folder), apply=True,
+    )
+    assert result["files_written"] == 0
+    assert result["files_unchanged"] == len(result["plan"])
+    assert exported.stat().st_mtime == old_time
+
+
+def test_identical_import_skips_saving(
+    call: Callable[..., Any], workbook: Path, workspace: Path
+) -> None:
+    folder = workspace / "vba"
+    call(
+        "xlide_export_modules", file_path=str(workbook),
+        export_folder=str(folder), apply=True,
+    )
+    original_file = workbook.read_bytes()
+    result = call(
+        "xlide_import_modules", file_path=str(workbook),
+        source_folder=str(folder), apply=True,
+    )
+    assert result["applied"] is True
+    assert result["modules_changed"] == 0
+    assert result["saved"] is False
+    assert workbook.read_bytes() == original_file
+
+
+def test_export_refuses_a_linked_module_outside_the_workspace(
+    call: Callable[..., Any], workbook: Path, workspace: Path
+) -> None:
+    folder = workspace / "vba"
+    folder.mkdir()
+    outside = workspace.parent / "outside-export.bas"
+    outside.write_text("keep this", encoding="utf-8")
+    try:
+        (folder / "Helpers.bas").symlink_to(outside)
+    except OSError:
+        pytest.skip("creating a file symlink needs privilege on this machine")
+    with pytest.raises(ToolFailure) as refusal:
+        call("xlide_export_modules", file_path=str(workbook), export_folder=str(folder),
+             apply=True)
+    assert "outside this server's workspace" in refusal.value.message
+    assert outside.read_text(encoding="utf-8") == "keep this"
+
+
+def test_import_refuses_a_linked_module_outside_the_workspace(
+    call: Callable[..., Any], workbook: Path, workspace: Path
+) -> None:
+    folder = workspace / "vba"
+    folder.mkdir()
+    outside = workspace.parent / "outside-import.bas"
+    outside.write_text("Option Explicit\n", encoding="utf-8")
+    try:
+        (folder / "Extra.bas").symlink_to(outside)
+    except OSError:
+        pytest.skip("creating a file symlink needs privilege on this machine")
+    with pytest.raises(ToolFailure) as refusal:
+        call("xlide_import_modules", file_path=str(workbook), source_folder=str(folder))
+    assert "outside this server's workspace" in refusal.value.message
 
 
 def test_import_round_trips_an_edit(
@@ -213,6 +390,7 @@ def test_power_query_read_and_write(call: Callable[..., Any], plain_workbook: Pa
     read = call("xlide_read_query", file_path=str(plain_workbook), query_name="numbers")
     assert read["query"] == "Numbers"
     assert "let" in read["formula"]
+    assert read["content_token"].startswith("xlide1:")
 
     call(
         "xlide_write_query",
@@ -234,14 +412,32 @@ def test_power_query_read_and_write(call: Callable[..., Any], plain_workbook: Pa
     )
     assert created["created"] is True
     assert "Staging" in call("xlide_list_queries", file_path=str(plain_workbook))["groups"]
+    first_page = call(
+        "xlide_list_queries", file_path=str(plain_workbook), max_results=1,
+    )
+    assert first_page["count"] == 2
+    assert first_page["next_offset"] == 1
+    second_page = call(
+        "xlide_list_queries", file_path=str(plain_workbook),
+        max_results=1, offset=first_page["next_offset"],
+    )
+    assert second_page["queries"][0]["name"] != first_page["queries"][0]["name"]
+    assert second_page["next_offset"] is None
 
-    call(
+    totals_read = call(
+        "xlide_read_query", file_path=str(plain_workbook), query_name="Totals",
+    )
+    renamed = call(
         "xlide_write_query",
         file_path=str(plain_workbook),
         action="rename",
         query_name="Totals",
         new_name="GrandTotals",
+        expected_content_token=totals_read["content_token"],
     )
+    assert renamed["content_token"] == call(
+        "xlide_read_query", file_path=str(plain_workbook), query_name="GrandTotals",
+    )["content_token"]
     call(
         "xlide_write_query",
         file_path=str(plain_workbook),
@@ -250,6 +446,37 @@ def test_power_query_read_and_write(call: Callable[..., Any], plain_workbook: Pa
     )
     remaining = call("xlide_list_queries", file_path=str(plain_workbook))["queries"]
     assert [q["name"] for q in remaining] == ["Numbers"]
+
+
+def test_power_query_read_slices_and_guards_a_write(
+    call: Callable[..., Any], plain_workbook: Path
+) -> None:
+    formula = "let\n    Source = {1..10}\nin\n    Source\n"
+    call(
+        "xlide_write_query", file_path=str(plain_workbook), action="set",
+        query_name="Numbers", formula=formula,
+    )
+    full = call("xlide_read_query", file_path=str(plain_workbook), query_name="Numbers")
+    assert full["total_lines"] == 4
+    sliced = call(
+        "xlide_read_query", file_path=str(plain_workbook), query_name="Numbers",
+        start_line=2, end_line=2,
+    )
+    assert sliced["formula"] == "    Source = {1..10}"
+    assert sliced["content_token"] == full["content_token"]
+    changed = call(
+        "xlide_write_query", file_path=str(plain_workbook), action="set",
+        query_name="Numbers", formula=formula.replace("1..10", "1..20"),
+        expected_content_token=sliced["content_token"],
+    )
+    assert changed["content_token"] != sliced["content_token"]
+    with pytest.raises(ToolFailure) as refusal:
+        call(
+            "xlide_write_query", file_path=str(plain_workbook), action="set",
+            query_name="Numbers", formula=formula,
+            expected_content_token=sliced["content_token"],
+        )
+    assert "changed since it was read" in refusal.value.message
 
 
 def test_setting_a_query_reports_the_m_that_changed(

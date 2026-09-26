@@ -45,9 +45,11 @@ class CellsError(ToolError):
 class SheetInfo:
     name: str
     used_range: str
-    hidden: bool
-    pivot_tables: tuple[dict[str, str], ...] = ()
+    hidden: bool | None
+    hidden_error: str | None = None
+    pivot_tables: tuple[dict[str, str], ...] | None = ()
     """Each pivot table's name, the block it fills, and what its cache was read from."""
+    pivot_tables_error: str | None = None
 
     def summary(self) -> dict[str, Any]:
         entry: dict[str, Any] = {
@@ -55,7 +57,12 @@ class SheetInfo:
             "used_range": self.used_range or "(empty)",
             "hidden": self.hidden,
         }
-        if self.pivot_tables:
+        if self.hidden_error:
+            entry["hidden_error"] = self.hidden_error
+        if self.pivot_tables is None:
+            entry["pivot_tables"] = None
+            entry["pivot_tables_error"] = self.pivot_tables_error
+        elif self.pivot_tables:
             entry["pivot_tables"] = list(self.pivot_tables)
         return entry
 
@@ -291,8 +298,11 @@ def _within(cell: str, span: Any) -> bool:
 def _text(cell: Any) -> str:
     try:
         return str(cell.text)
-    except Exception:
-        return ""
+    except Exception as exc:
+        raise CellsError(
+            f"Formatted text at {cell.a1} could not be read: {exc}. "
+            "Use include='values' to read the stored value."
+        ) from exc
 
 
 def _json_value(value: Any) -> Any:
@@ -305,7 +315,14 @@ def _json_value(value: Any) -> Any:
     return _value(value)
 
 
-def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -> WriteResult:
+def write(
+    path: Path,
+    sheet_name: str,
+    start_cell: str,
+    data: list[list[Any]],
+    *,
+    allow_overwrite: bool = False,
+) -> WriteResult:
     """Put values and formulas into a block, and say what was displaced.
 
     A value written over a formula removes the formula, which is what typing into
@@ -323,13 +340,20 @@ def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -
         block = _block(first, len(data), width)
 
         overwritten = formulas_replaced = 0
-        if len(data) * width <= MAX_CELLS_PER_READ:
-            for row in _range(sheet, block).rows():
-                for cell in row:
-                    if cell.formula is not None:
-                        formulas_replaced += 1
-                    elif cell.value is not None:
-                        overwritten += 1
+        for row_offset, row_values in enumerate(data):
+            for column_offset in range(len(row_values)):
+                cell = sheet.cell(first.row + row_offset, first.column + column_offset)
+                if cell.formula is not None:
+                    formulas_replaced += 1
+                elif cell.value is not None:
+                    overwritten += 1
+        occupied = overwritten + formulas_replaced
+        if occupied and not allow_overwrite:
+            raise CellsError(
+                f"Writing {block} would overwrite {occupied} cells, including "
+                f"{formulas_replaced} formulas. Nothing was written. Read the range, "
+                "ask the user, then call again with allow_overwrite=true."
+            )
 
         written = 0
         for row_offset, row_values in enumerate(data):
@@ -351,7 +375,7 @@ def write(path: Path, sheet_name: str, start_cell: str, data: list[list[Any]]) -
 # ------------------------------------------------------------------ the parts
 
 
-def _hidden(sheet: Any) -> bool:
+def _hidden(sheet: Any) -> tuple[bool | None, str | None]:
     """Whether a sheet is hidden, however this pyOfficeEditor spells it.
 
     `Worksheet.visible` arrives in 0.2. On 0.1.1 the state is only in the
@@ -363,14 +387,19 @@ def _hidden(sheet: Any) -> bool:
     sheets are hidden means both, and the difference is only how hard Excel
     makes it to unhide.
     """
-    visible = getattr(sheet, "visible", None)
-    if visible is not None:
-        return str(getattr(visible, "value", visible)).lower() != "visible"
     try:
+        visible = getattr(sheet, "visible", None)
+        if visible is not None:
+            state = str(getattr(visible, "value", visible)).lower()
+            if state not in {"visible", "hidden", "veryhidden"}:
+                return None, f"Sheet visibility has an unknown state: {state!r}"
+            return state != "visible", None
         entry = _sheet_entry(sheet)
-    except Exception:
-        return False
-    return entry in {"hidden", "veryhidden"}
+    except Exception as exc:
+        return None, f"Sheet visibility could not be read: {exc}"
+    if entry not in {"visible", "hidden", "veryhidden"}:
+        return None, f"Sheet visibility has an unknown state: {entry!r}"
+    return entry != "visible", None
 
 
 def _sheet_entry(sheet: Any) -> str:
@@ -386,24 +415,28 @@ def _sheet_entry(sheet: Any) -> str:
             continue
         state = re.search(r'\bstate="([^"]*)"', markup)
         return state.group(1).strip().lower() if state else "visible"
-    return "visible"
+    raise ValueError(f"No sheet entry named {sheet.name!r} was found in the workbook.")
 
 
 def _sheet_info(sheet: Any) -> SheetInfo:
     used = sheet.used_range
+    pivots, pivot_error = _pivots(sheet)
+    hidden, hidden_error = _hidden(sheet)
     return SheetInfo(
         name=sheet.name,
         used_range=str(used) if used is not None else "",
-        hidden=_hidden(sheet),
-        pivot_tables=tuple(_pivot(table) for table in _pivots(sheet)),
+        hidden=hidden,
+        hidden_error=hidden_error,
+        pivot_tables=tuple(_pivot(table) for table in pivots) if pivot_error is None else None,
+        pivot_tables_error=pivot_error,
     )
 
 
-def _pivots(sheet: Any) -> list[Any]:
+def _pivots(sheet: Any) -> tuple[list[Any], str | None]:
     try:
-        return list(sheet.pivot_tables)
-    except Exception:
-        return []
+        return list(sheet.pivot_tables), None
+    except Exception as exc:
+        return [], f"Pivot tables could not be read: {exc}"
 
 
 def _pivot(table: Any) -> dict[str, str]:
@@ -578,8 +611,11 @@ def _runs(sheet: Any, cell: Any) -> list[dict[str, Any]] | None:
     """A cell's text in more than one font, as runs, or None for plain text."""
     try:
         found = sheet.get_rich_text(cell.reference)
-    except Exception:
-        return None
+    except Exception as exc:
+        raise CellsError(
+            f"Rich text at {cell.a1} could not be read: {exc}. "
+            "Use include='values' to read the stored value."
+        ) from exc
     # A plain cell answers with one run in its own font, which is not text in
     # several fonts and would bury the cells that are.
     if not found or len(found) < 2:

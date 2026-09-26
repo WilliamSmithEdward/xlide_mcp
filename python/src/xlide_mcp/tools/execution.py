@@ -461,6 +461,11 @@ def _harness_refusal(exc: Exception, info: HostInfo) -> str:
             "> Macro Settings > Trust access to the VBA project object model. It is per "
             f"application and per Windows user. ({text})"
         )
+    if "pyvbaharness session" in lowered or "mutex" in lowered:
+        return (
+            f"Another automation session holds {info.title}'s execution lock. Wait for it "
+            f"to finish and retry. ({text})"
+        )
     if "already" in lowered or "running" in lowered:
         return (
             f"{info.title} is already running, and this server will not take ownership of a "

@@ -190,6 +190,7 @@ def test_a_rule_paints_cells_that_compare_true(
         "xlide_manage_conditional_format", file_path=str(sheet_with_data), sheet="Sheet1"
     )
     assert listed["count"] == 1
+    assert listed["formats"][0]["range"] == "B2:B3"
 
 
 def test_a_rule_with_no_paint_is_refused(
@@ -250,6 +251,7 @@ def test_a_link_out_and_a_link_inside_both_work(
     )
     listed = call("xlide_manage_hyperlink", file_path=str(workbook), sheet="Sheet1")
     assert listed["count"] == 2
+    assert [entry["range"] for entry in listed["hyperlinks"]] == ["A1", "A2"]
 
     call(
         "xlide_manage_hyperlink",
@@ -287,3 +289,60 @@ def test_page_setup_reads_without_changing_anything(
     assert answer["sheet"] == "Sheet1"
     assert "margins" in answer
     assert isinstance(answer["print_area"], list)
+
+
+def test_feature_lists_can_reach_items_after_the_first_page(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    path = str(workbook)
+    sheet = "Sheet1"
+    call(
+        "xlide_write_cells", file_path=path, sheet=sheet, start_cell="A1",
+        data=[["First", "Second"], [1, 2]],
+    )
+    for name, cell_range in (("FirstTable", "A1:A2"), ("SecondTable", "B1:B2")):
+        call(
+            "xlide_manage_table", file_path=path, action="add", sheet=sheet,
+            table_name=name, cell_range=cell_range,
+        )
+    for name, reference in (("FirstName", "A1"), ("SecondName", "B1")):
+        call(
+            "xlide_manage_name", file_path=path, action="add", name=name,
+            refers_to=f"Sheet1!${reference[0]}$1",
+        )
+    for cell_range in ("C1:C2", "D1:D2"):
+        call(
+            "xlide_manage_validation", file_path=path, sheet=sheet, action="add",
+            cell_range=cell_range, formula1="Yes,No",
+        )
+        call(
+            "xlide_manage_conditional_format", file_path=path, sheet=sheet,
+            action="add", cell_range=cell_range, value="1", fill_color="FFC7CE",
+        )
+    for cell in ("E1", "E2"):
+        call(
+            "xlide_manage_hyperlink", file_path=path, sheet=sheet, action="add",
+            cell_range=cell, target=f"https://example.com/{cell}",
+        )
+        call(
+            "xlide_manage_comment", file_path=path, sheet=sheet, action="set",
+            cell=cell, text=f"Note for {cell}",
+        )
+
+    for tool, field, extra in (
+        ("xlide_manage_table", "tables", {}),
+        ("xlide_manage_name", "names", {}),
+        ("xlide_manage_validation", "validations", {"sheet": sheet}),
+        ("xlide_manage_conditional_format", "formats", {"sheet": sheet}),
+        ("xlide_manage_hyperlink", "hyperlinks", {"sheet": sheet}),
+        ("xlide_manage_comment", "comments", {"sheet": sheet}),
+    ):
+        first = call(tool, file_path=path, max_results=1, **extra)
+        assert first["count"] == 2
+        assert len(first[field]) == 1
+        assert first["next_offset"] == 1
+        second = call(tool, file_path=path, offset=first["next_offset"], max_results=1, **extra)
+        assert second["count"] == 2
+        assert len(second[field]) == 1
+        assert second["next_offset"] is None
+        assert second[field] != first[field]

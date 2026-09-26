@@ -71,6 +71,19 @@ def test_a_module_listing_is_bounded_and_says_so(
     assert "note" in result
 
 
+def test_module_pages_reach_modules_after_the_bound(
+    call: Callable[..., Any], crowded: Path
+) -> None:
+    first = call("xlide_list_modules", file_path=str(crowded), max_results=1)
+    assert first["next_offset"] == 1
+    later = call(
+        "xlide_list_modules", file_path=str(crowded),
+        offset=first["count"] - 1, max_results=1,
+    )
+    assert later["modules"][0]["name"] == "Monster"
+    assert later["next_offset"] is None
+
+
 def test_the_one_shot_summary_is_bounded_too(
     call: Callable[..., Any], crowded: Path
 ) -> None:
@@ -93,6 +106,28 @@ def test_a_form_with_too_many_controls_is_bounded(
     assert 0 < shown < MAX_ITEMS["controls"]
     assert result["control_count"] > shown
     assert str(result["control_count"]) in result["note"]
+
+
+def test_form_control_pages_reach_the_end(
+    call: Callable[..., Any], crowded: Path
+) -> None:
+    first = call(
+        "xlide_read_form", file_path=str(crowded), form_name="Monster",
+        include_properties=False, max_controls=20,
+    )
+    assert len(first["controls"]) == 20
+    assert first["next_offset"] == 20
+    second = call(
+        "xlide_read_form", file_path=str(crowded), form_name="Monster",
+        include_properties=False, max_controls=20, offset=first["next_offset"],
+    )
+    assert second["controls"][0]["name"] != first["controls"][0]["name"]
+    last = call(
+        "xlide_read_form", file_path=str(crowded), form_name="Monster",
+        include_properties=False, max_controls=1, offset=first["control_count"] - 1,
+    )
+    assert last["controls"][0]["name"] == "Btn319"
+    assert last["next_offset"] is None
 
 
 def test_the_size_ceiling_binds_before_the_count_for_costly_items() -> None:
