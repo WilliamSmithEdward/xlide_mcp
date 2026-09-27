@@ -303,6 +303,23 @@ def test_a_button_is_added_at_a_cell_with_its_macro(
     assert listed["cells"].startswith("E8"), "anchored on the cell's corner, not beside it"
 
 
+def test_a_shape_can_be_updated_without_replacing_its_macro(
+    call: Callable[..., Any], shapes_workbook: Path
+) -> None:
+    before = shape(call("xlide_list_shapes", file_path=str(shapes_workbook)), "RunButton")
+    updated = call(
+        "xlide_update_shape", file_path=str(shapes_workbook), sheet="Controls",
+        shape_name="RunButton", new_name="RunNow", text="Run now",
+        alt_text="Start the job", left=42.0,
+    )
+    assert updated["shape"] == "RunNow"
+    assert updated["position"]["left"] == 42.0
+    after = shape(call("xlide_list_shapes", file_path=str(shapes_workbook)), "RunNow")
+    assert after["text"] == "Run now"
+    assert after["alt_text"] == "Start the job"
+    assert after["macro"] == before["macro"]
+
+
 def test_a_check_box_is_added_linked_to_its_cell(
     call: Callable[..., Any], shapes_workbook: Path
 ) -> None:

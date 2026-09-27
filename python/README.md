@@ -103,7 +103,7 @@ With uv instead, so that nothing has to be installed first:
 }
 ```
 
-uvx takes the newest published version unless you pin it, as `xlide-mcp@1.1.0`.
+uvx takes the newest published version unless you pin it, as `xlide-mcp@1.2.0`.
 
 `--root` is the security boundary. Every path a tool accepts is resolved,
 symlinks included, and refused unless it lands inside a root.
@@ -174,17 +174,25 @@ The `list` actions for tables, names, validation, conditional formats, hyperlink
 and comments also accept `offset` and `max_results` and return `next_offset`.
 Merging cells keeps only the top-left value. `xlide_format_cells` refuses to clear
 other values or formulas unless `allow_overwrite=true` is passed.
+`xlide_sort_rows` sorts a range, table or filter with ordered keys;
+`xlide_remove_duplicates` keeps the first matching row. `xlide_copy_cells` copies
+between sheets with Paste Special options and requires `allow_overwrite=true`.
+`xlide_update_shape` changes a shape's position, name, text, alt text or visibility
+without removing it; it also changes a Forms control's linked cell or list range.
+
+`xlide_check_cells` lists Excel's green-triangle error checks, including numbers
+stored as text and inconsistent formulas, with paging for long lists.
 
 *The document around it*
 
 | | |
 |---|---|
 | Power Query | `xlide_list_queries`, `xlide_read_query`, `xlide_write_query` |
-| Sheets and cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_evaluate_formula`, `xlide_format_cells` |
+| Sheets and cells | `xlide_list_sheets`, `xlide_read_cells`, `xlide_write_cells`, `xlide_evaluate_formula`, `xlide_check_cells`, `xlide_format_cells`, `xlide_sort_rows`, `xlide_remove_duplicates`, `xlide_copy_cells` |
 | Structure | `xlide_manage_sheet`, `xlide_manage_rows_columns` |
 | Tables and names | `xlide_manage_table`, `xlide_manage_name`, `xlide_manage_filter` |
 | Rules, links and notes | `xlide_manage_validation`, `xlide_manage_conditional_format`, `xlide_manage_hyperlink`, `xlide_manage_comment`, `xlide_page_setup` |
-| Shapes and charts | `xlide_list_shapes`, `xlide_manage_shape`, `xlide_set_shape_macro`, `xlide_add_chart` |
+| Shapes and charts | `xlide_list_shapes`, `xlide_manage_shape`, `xlide_update_shape`, `xlide_set_shape_macro`, `xlide_add_chart` |
 
 **Execution** - Windows with the desktop application.
 
@@ -295,7 +303,7 @@ them whether or not the user configured anything.
 |---|---|
 | [pyOpenVBA](https://github.com/WilliamSmithEdward/pyOpenVBA) | Reads and writes VBA, UserForms and Power Query inside Office files, in pure Python. |
 | [pyOfficeEditor](https://github.com/WilliamSmithEdward/pyOfficeEditor) | The document surface: cells, formulas, formatting, tables, validation, rows and columns. |
-| [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | The static analyzer: 131 diagnostics, measured against each host's object model. |
+| [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | The static analyzer: 165 diagnostics, measured against each host's object model. |
 | [pyVBAharness](https://github.com/WilliamSmithEdward/pyVBAharness) | Runs VBA in desktop Office under a supervisor that enforces a deadline. |
 | [XLIDE for VS Code](https://github.com/WilliamSmithEdward/xlide_vscode) | Where the tool surface, the content-token guard and the agent instructions come from. |
 

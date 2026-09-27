@@ -1,5 +1,5 @@
 {
-  "conformance_version": "1.1.0",
+  "conformance_version": "1.2.0",
   "reference_implementation": "python",
   "note": "Behaviour every implementation in this repository owes. The Python suite runs this file, so a case that is wrong fails there before a port ever sees it.",
   "requires": {
@@ -214,7 +214,7 @@
       }
     }
   },
-  "case_count": 133,
+  "case_count": 139,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -4547,6 +4547,259 @@
         }
       ],
       "fixture": "workbook"
+    },
+    {
+      "id": "ranges.error-checks-find-numbers-stored-as-text",
+      "why": "Excel's green-triangle checks are a separate surface from formula analysis.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "123"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_check_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "checks",
+          "contains": "numberStoredAsText"
+        }
+      ]
+    },
+    {
+      "id": "ranges.sort-keeps-the-header-and-orders-data",
+      "why": "Sort leaves the header and moves whole data rows, so values stay paired.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "Name",
+                "Score"
+              ],
+              [
+                "B",
+                2
+              ],
+              [
+                "A",
+                1
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_sort_rows",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1:B3",
+            "header": true,
+            "keys": [
+              {
+                "column": "A"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "xlide_read_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1:B3"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "values",
+          "equals": [
+            [
+              "Name",
+              "Score"
+            ],
+            [
+              "A",
+              1
+            ],
+            [
+              "B",
+              2
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ranges.remove-duplicates-keeps-the-first-row",
+      "why": "Duplicate removal keeps the first occurrence and reports how many rows went.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                "Name"
+              ],
+              [
+                "A"
+              ],
+              [
+                "A"
+              ],
+              [
+                "B"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_remove_duplicates",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A1:A4",
+            "header": true
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "rows_removed",
+          "equals": 1
+        },
+        {
+          "path": "saved",
+          "equals": true
+        }
+      ]
+    },
+    {
+      "id": "ranges.copy-refuses-without-overwrite-approval",
+      "why": "A copy can replace destination data, so the caller must acknowledge that first.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_copy_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "source_range": "A1",
+            "destination": "B1"
+          },
+          "error_contains": "allow_overwrite=true"
+        }
+      ],
+      "fixture": "plain_workbook"
+    },
+    {
+      "id": "ranges.copy-moves-relative-formulas",
+      "why": "A copied formula follows its new cell, while the source stays where it was.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "start_cell": "A1",
+            "data": [
+              [
+                5,
+                "=A1*2"
+              ]
+            ]
+          }
+        },
+        {
+          "tool": "xlide_copy_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "source_range": "A1:B1",
+            "destination": "A2",
+            "allow_overwrite": true
+          }
+        },
+        {
+          "tool": "xlide_read_cells",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Sheet1",
+            "cell_range": "A2:B2",
+            "include": "both"
+          }
+        }
+      ],
+      "fixture": "plain_workbook",
+      "expect": [
+        {
+          "path": "formulas[0][1]",
+          "equals": "=A2*2"
+        }
+      ]
+    },
+    {
+      "id": "shapes.update-preserves-the-macro",
+      "why": "Moving and renaming a button keeps the macro link it already had.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_update_shape",
+          "arguments": {
+            "file_path": "${fixture}",
+            "sheet": "Controls",
+            "shape_name": "RunButton",
+            "new_name": "RunNow",
+            "left": 42.0
+          }
+        },
+        {
+          "tool": "xlide_list_shapes",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "shapes_workbook",
+      "expect": [
+        {
+          "path": "sheets[0].shapes",
+          "contains": "RunNow"
+        },
+        {
+          "path": "macros_run_by_shapes",
+          "contains": "RunNow"
+        }
+      ]
     }
   ]
 }

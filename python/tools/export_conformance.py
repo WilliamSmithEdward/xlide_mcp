@@ -2724,6 +2724,91 @@ def cases() -> list[dict[str, Any]]:
         )
     )
 
+    # -------------------------------------------------------- range operations
+    sheet = {"file_path": "${fixture}", "sheet": "Sheet1"}
+    out.append(
+        case(
+            "ranges.error-checks-find-numbers-stored-as-text",
+            "Excel's green-triangle checks are a separate surface from formula analysis.",
+            "plain_workbook",
+            [
+                step("xlide_write_cells", {**sheet, "start_cell": "A1", "data": [["123"]]}),
+                step("xlide_check_cells", sheet),
+            ],
+            [{"path": "checks", "contains": "numberStoredAsText"}],
+        )
+    )
+    out.append(
+        case(
+            "ranges.sort-keeps-the-header-and-orders-data",
+            "Sort leaves the header and moves whole data rows, so values stay paired.",
+            "plain_workbook",
+            [
+                step("xlide_write_cells", {**sheet, "start_cell": "A1", "data": [
+                    ["Name", "Score"], ["B", 2], ["A", 1],
+                ]}),
+                step("xlide_sort_rows", {**sheet, "cell_range": "A1:B3",
+                    "header": True, "keys": [{"column": "A"}]}),
+                step("xlide_read_cells", {**sheet, "cell_range": "A1:B3"}),
+            ],
+            [{"path": "values", "equals": [["Name", "Score"], ["A", 1], ["B", 2]]}],
+        )
+    )
+    out.append(
+        case(
+            "ranges.remove-duplicates-keeps-the-first-row",
+            "Duplicate removal keeps the first occurrence and reports how many rows went.",
+            "plain_workbook",
+            [
+                step("xlide_write_cells", {**sheet, "start_cell": "A1", "data": [
+                    ["Name"], ["A"], ["A"], ["B"],
+                ]}),
+                step("xlide_remove_duplicates", {**sheet, "cell_range": "A1:A4",
+                    "header": True}),
+            ],
+            [{"path": "rows_removed", "equals": 1}, {"path": "saved", "equals": True}],
+        )
+    )
+    out.append(
+        case(
+            "ranges.copy-refuses-without-overwrite-approval",
+            "A copy can replace destination data, so the caller must acknowledge that first.",
+            "plain_workbook",
+            [step("xlide_copy_cells", {**sheet, "source_range": "A1",
+                "destination": "B1"}, error_contains="allow_overwrite=true")],
+            [],
+        )
+    )
+    out.append(
+        case(
+            "ranges.copy-moves-relative-formulas",
+            "A copied formula follows its new cell, while the source stays where it was.",
+            "plain_workbook",
+            [
+                step("xlide_write_cells", {**sheet, "start_cell": "A1", "data": [
+                    [5, "=A1*2"],
+                ]}),
+                step("xlide_copy_cells", {**sheet, "source_range": "A1:B1",
+                    "destination": "A2", "allow_overwrite": True}),
+                step("xlide_read_cells", {**sheet, "cell_range": "A2:B2", "include": "both"}),
+            ],
+            [{"path": "formulas[0][1]", "equals": "=A2*2"}],
+        )
+    )
+    out.append(
+        case(
+            "shapes.update-preserves-the-macro",
+            "Moving and renaming a button keeps the macro link it already had.",
+            "shapes_workbook",
+            [
+                step("xlide_update_shape", {"file_path": "${fixture}", "sheet": "Controls",
+                    "shape_name": "RunButton", "new_name": "RunNow", "left": 42.0}),
+                step("xlide_list_shapes", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "sheets[0].shapes", "contains": "RunNow"},
+             {"path": "macros_run_by_shapes", "contains": "RunNow"}],
+        )
+    )
     return out
 
 

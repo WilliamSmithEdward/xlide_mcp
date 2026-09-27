@@ -23,13 +23,12 @@ files Excel 16 saved.
 
 Writing is pyOfficeEditor's. Since 0.3 it adds, removes and repoints shapes,
 and keeps a form control's four parts in agreement while it does, which is the
-format knowledge this server should never have held. The reader stays for now,
-because pyOfficeEditor's shapes do not yet carry four things list_shapes has
-always answered and the conformance corpus pins: the cells an anchor covers,
-alt text, the hidden flag, and ActiveX controls. What pyOfficeEditor reads that
-this does not - a control's state and every shape's position in points - is
-merged in by name. When its shapes carry the four, this reader and xlsx.py go
-together (WilliamSmithEdward/pyOfficeEditor#4).
+format knowledge this server should never have held. Version 0.4 now reports
+anchor cells, alt text, hidden state and ActiveX controls too. The reader stays
+for the Excel 2007 form control saved only in VML: pyOfficeEditor 0.4 does not
+list it, and this server's fixture test requires its macro.
+Control state, position in points and chart series are merged in by name.
+When the VML-only control is read upstream, this reader and xlsx.py go together.
 
 One write stays here with the reader: the macro on a control Excel 2007 saved,
 which lives only in the VML, where pyOfficeEditor does not look.
@@ -913,20 +912,13 @@ def _find_shape(sheet: Any, name: str) -> Any:
 
 
 def _cell_origin(sheet: Any, reference: str) -> tuple[float, float]:
-    """Where a cell's top-left corner is, in points, on pyOfficeEditor's own grid.
+    """Where a cell starts in points, using pyOfficeEditor's public grid API."""
+    from pyofficeeditor.exceptions import PyOfficeEditorError
 
-    The grid it turns a position back into an anchor with, a sheet's default
-    column width included, so a shape placed at a cell lands on that cell. It is
-    private until pyOfficeEditor takes a cell for a position
-    (WilliamSmithEdward/pyOfficeEditor#4).
-    """
-    from pyofficeeditor.excel._shapes import SheetGrid
-
-    from . import cells
-
-    corner = cells.cell_reference(sheet, reference)
-    grid = SheetGrid.of(sheet._root)
-    return grid.x(corner.column - 1), grid.y(corner.row - 1)
+    try:
+        return sheet.cell_origin(reference)
+    except (PyOfficeEditorError, ValueError) as exc:
+        raise ToolError(f"Invalid shape cell {reference!r}: {exc}") from exc
 
 
 # ------------------------------------------------ a control kept only in VML

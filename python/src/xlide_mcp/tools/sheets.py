@@ -449,6 +449,78 @@ def register(server: MCPServer, settings: Settings) -> None:
         return result
 
     @server.tool(
+        name="xlide_update_shape",
+        title="Update a shape or form control",
+        annotations=writes("Update a shape or form control", destructive=True),
+        description=(
+            "Moves, resizes, renames or changes an existing shape's text, alt text or "
+            "visibility without replacing it. A Forms control can also change its linked "
+            "cell or list range. Coordinates and sizes are in points; omit any field to "
+            "leave it unchanged, and pass an empty text or link to clear it. ActiveX, "
+            "embedded objects and groups cannot be updated. Works on .xlsx, .xlsm and .xlam."
+        ),
+    )
+    def update_shape(
+        file_path: Annotated[str, Field(description="Absolute path to the Excel file.")],
+        sheet: Annotated[str, Field(description="Worksheet name, matched without case.")],
+        shape_name: Annotated[str, Field(description="Current name from xlide_list_shapes.")],
+        new_name: Annotated[
+            str | None, Field(default=None, description="New name; omit to keep the current one.")
+        ] = None,
+        left: Annotated[
+            float | None, Field(default=None, ge=0, description="New left position in points.")
+        ] = None,
+        top: Annotated[
+            float | None, Field(default=None, ge=0, description="New top position in points.")
+        ] = None,
+        width: Annotated[
+            float | None, Field(default=None, ge=0, description="New width in points.")
+        ] = None,
+        height: Annotated[
+            float | None, Field(default=None, ge=0, description="New height in points.")
+        ] = None,
+        text: Annotated[
+            str | None,
+            Field(default=None, description="New caption or text; empty clears it."),
+        ] = None,
+        alt_text: Annotated[
+            str | None, Field(default=None, description="New accessibility text; empty clears it.")
+        ] = None,
+        hidden: Annotated[
+            bool | None, Field(default=None, description="Hide or show the shape.")
+        ] = None,
+        linked_cell: Annotated[
+            str | None, Field(default=None, description="Forms control link; empty clears it.")
+        ] = None,
+        list_range: Annotated[
+            str | None, Field(default=None, description="Forms list source; empty clears it.")
+        ] = None,
+    ) -> dict[str, Any]:
+        require_writable(settings, "xlide_update_shape")
+        path = excel_with_sheets(file_path, settings)
+        from pyofficeeditor.exceptions import PyOfficeEditorError
+
+        with cells.editing(path) as book:
+            owner = cells.sheet_named(book, sheet)
+            try:
+                updated = owner.update_shape(
+                    shape_name, new_name=new_name, left=left, top=top, width=width,
+                    height=height, text=text, alt_text=alt_text, hidden=hidden,
+                    linked_cell=linked_cell, list_range=list_range,
+                )
+            except (PyOfficeEditorError, KeyError, ValueError) as exc:
+                raise ToolError(f"{shape_name!r} could not be updated: {exc}") from exc
+            name = owner.name
+        return {
+            "path": str(path), "sheet": name, "shape": updated.name,
+            "position": {
+                "left": round(updated.left, 2), "top": round(updated.top, 2),
+                "width": round(updated.width, 2), "height": round(updated.height, 2),
+            },
+            "saved": True,
+        }
+
+    @server.tool(
         name="xlide_add_chart",
         title="Add a chart",
         annotations=writes("Add a chart", destructive=False, idempotent=False),

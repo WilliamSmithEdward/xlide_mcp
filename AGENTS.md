@@ -29,7 +29,7 @@ libraries that hold the measured knowledge of the Office file formats:
 |---|---|
 | [pyOpenVBA](https://github.com/WilliamSmithEdward/pyOpenVBA) | How to read and write VBA, UserForm designs and Power Query inside the containers. |
 | [pyOfficeEditor](https://github.com/WilliamSmithEdward/pyOfficeEditor) | The document surface: cells, formulas, formatting, tables, validation, rows and columns. |
-| [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | 131 diagnostics, each measured against its host's object model. |
+| [pyVBAanalysis](https://github.com/WilliamSmithEdward/pyVBAanalysis) | 165 diagnostics, each measured against its host's object model. |
 | [pyVBAharness](https://github.com/WilliamSmithEdward/pyVBAharness) | How to run VBA in desktop Office without wedging on a dialog. |
 
 The split between the first two is the file itself: pyOpenVBA edits the VBA
@@ -59,17 +59,16 @@ conformance case passed before and after the swap. The one left here is the
 macro on a Forms control Excel 2007 saved, which lives only in VML, where
 pyOfficeEditor does not look; it goes with the reader.
 
-**Reading shapes is not, yet.** pyOfficeEditor's shapes do not carry four
-things `xlide_list_shapes` has always answered and the corpus pins: the cells an
-anchor covers, alt text, the hidden flag, and ActiveX controls. So the reader in
-`shapes.py` stays, with `xlsx.py` under it for `part_text`, `part_relationships`
-and `sheets`, and what pyOfficeEditor does read - a control's state, every
-shape's position in points, a chart's series - is merged in by name. Placing a
-new shape at a cell also borrows pyOfficeEditor's private grid, the one it turns
-a position back into an anchor with, because nothing public turns a cell into
-points. Both gaps are
-[pyOfficeEditor#4](https://github.com/WilliamSmithEdward/pyOfficeEditor/issues/4);
-when it closes, the reader and `xlsx.py` go in one deletion.
+**Reading shapes still has one legacy gap.** pyOfficeEditor 0.4 now reports the
+anchor cells, alt text, hidden state and ActiveX controls, and supplies a public
+`cell_origin` for placing a shape at a cell. It does not list a Forms control
+saved only in VML by Excel 2007. A regression fixture proves this: its shape list
+contains only the ordinary drawing shape after the DrawingML twins are removed.
+The reader in `shapes.py`, with `xlsx.py` under it, still reads that control and
+its macro; it merges pyOfficeEditor's control state, position and chart series
+by name. Once the VML-only control is covered upstream, migrate all reads to
+pyOfficeEditor and delete the reader and `xlsx.py` together. The other gaps
+were [pyOfficeEditor#4](https://github.com/WilliamSmithEdward/pyOfficeEditor/issues/4).
 
 Until then, nothing new goes into either.
 
@@ -113,6 +112,7 @@ tools/
   forms.py        UserForm and Access designs
   powerquery.py   the M code beside the VBA
   sheets.py       cells, formulas, and the shapes and charts on a sheet
+  ranges.py       sort, remove duplicates, and copy or paste cells
   formatting.py   how a range looks: styles, fonts, fills, borders, merging
   structure.py    sheets, and the rows and columns in them
   features.py     tables, names, validation, rules, links, comments, filters, page setup
@@ -181,7 +181,7 @@ Rules the surface holds to, each of which has a conformance case behind it:
   cached value off as fresh. An implementation that reported a computed value it
   did not compute would be lying to the user through the agent.
 
-A refusal is as much of the contract as a success: 29 of the 133 conformance cases
+A refusal is as much of the contract as a success: 30 of the 139 conformance cases
 assert a failure message. An error message is the whole of what the calling agent
 has to work with, so each one names what was refused and what to do instead.
 

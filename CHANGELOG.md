@@ -3,6 +3,33 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [1.2.0]
+
+Follows pyOpenVBA 6.2.0, pyOfficeEditor 0.4.0, pyVBAanalysis 2.3.0 and
+pyVBAharness 1.1.5. The analyzer now exposes 165 diagnostics, including
+runtime errors and compile errors measured in desktop Office. The server has
+65 tools and 139 conformance cases.
+
+### Added
+
+- `xlide_sort_rows` sorts a range, table or filter by one or more columns, with
+  each row's formulas, formats, notes and links moving with it.
+- `xlide_remove_duplicates` removes later matching rows, keeping the first and
+  shrinking a table when the range is in one.
+- `xlide_copy_cells` copies between sheets with Excel's Paste Special choices,
+  formula reference shifts, optional transpose and arithmetic operations. It
+  requires `allow_overwrite=true` because destination data may be replaced.
+- `xlide_update_shape` moves, resizes or renames a shape, changes its text, alt
+  text or visibility, and updates a Forms control's linked cell or list range.
+- `xlide_check_cells` reports Excel's green-triangle error checks with their
+  cells and rule names, including findings the file records as ignored.
+
+### Updated
+
+- pyOpenVBA 6.2.0 adds named cell style and hyperlink behavior to its VBA object
+  model. pyVBAanalysis 2.3.0 adds 34 diagnostics and removes false positives on
+  code that desktop Office accepts or handles at run time.
+
 ## [1.1.0]
 
 Follows pyOpenVBA 6.1.2, pyOfficeEditor 0.3.0, pyVBAanalysis 2.2.1 and
@@ -254,6 +281,7 @@ cells and document surface inside Office files, and for Visual Basic 6 projects.
 - The document surface is Excel only. Word, PowerPoint and Access reach their
   VBA, forms and catalogs, and their document surfaces follow pyOfficeEditor.
 
+[1.2.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.0
 [1.1.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.1.0
 [1.0.3]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.3
 [1.0.2]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.2

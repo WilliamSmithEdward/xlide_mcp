@@ -75,6 +75,9 @@ next opens the database.
 and anything depending on a cell you write, has no current result in the file until \
 Excel next opens it. xlide_read_cells with calculate=true works results out with a \
 formula engine and names any cell it could not; report those as Excel's cached values.
+- xlide_sort_rows changes row order, xlide_remove_duplicates deletes later rows, and \
+xlide_copy_cells can replace destination data. Ask the user before these hard-to-undo \
+changes. A copy requires allow_overwrite=true after agreement.
 - When XLIDE for VS Code is running, a write's result carries xlide_vscode, and the \
 user can see the change and keep or revert it in XLIDE's project tree. Say so.
 - Report what you changed, how you verified it, and what the user still has to do.
