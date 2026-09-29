@@ -5,8 +5,8 @@ until the first macro exists, and a binary .xls or .doc with no macros has no
 VBA storage at all. Both are normal. Before pyOpenVBA 6.1 every such file read
 as a failure, and through this server as an error with no message.
 
-The fixtures are the files the applications themselves saved, copied from
-pyOpenVBA's tests/fixtures/no_vba, where scripts/measure_no_vba.py makes them.
+The Office fixtures come from pyOpenVBA's tests/fixtures/no_vba. Access's
+no-project fixture is the database Access saved before its first object.
 """
 
 from __future__ import annotations
@@ -35,7 +35,15 @@ def no_vba(workspace: Path) -> Callable[[str], Path]:
 
 
 @pytest.mark.parametrize(
-    "name", ["workbook.xlsm", "workbook.xls", "document.docm", "document.doc", "presentation.pptm"]
+    "name",
+    [
+        "workbook.xlsm",
+        "workbook.xls",
+        "document.docm",
+        "document.doc",
+        "presentation.pptm",
+        "database.accdb",
+    ],
 )
 def test_the_listings_answer_empty_and_say_why(
     call: Callable[..., Any], no_vba: Callable[[str], Path], name: str
@@ -122,6 +130,29 @@ def test_the_first_module_gives_the_file_its_project(
         assert "AddNums" in reopened.get_module("Helpers")
 
 
+def test_access_first_module_gives_a_database_its_project(
+    call: Callable[..., Any], no_vba: Callable[[str], Path]
+) -> None:
+    path = no_vba("database.accdb")
+    written = call(
+        "xlide_write_module", file_path=str(path), module_name="Helpers", source=SAMPLE_MODULE
+    )
+    assert written["vba_project_created"] is True
+    listed = call("xlide_list_modules", file_path=str(path))
+    assert listed["has_vba_project"] is True
+    assert {module["name"] for module in listed["modules"]} == {"Helpers"}
+
+
+def test_create_project_adds_empty_access_project(
+    call: Callable[..., Any], no_vba: Callable[[str], Path]
+) -> None:
+    path = no_vba("database.accdb")
+    added = call("xlide_create_project", file_path=str(path))
+    assert added["vba_project_created"] is True
+    assert added["modules"] == []
+    assert call("xlide_project_info", file_path=str(path))["has_vba_project"] is True
+
+
 def test_a_document_module_can_be_the_first_one_written(
     call: Callable[..., Any], no_vba: Callable[[str], Path]
 ) -> None:
@@ -187,9 +218,7 @@ def test_a_form_or_an_import_gives_the_file_its_project_too(
     call: Callable[..., Any], no_vba: Callable[[str], Path], workspace: Path
 ) -> None:
     formed = no_vba("workbook.xlsm")
-    created = call(
-        "xlide_manage_form", file_path=str(formed), action="create", form_name="Wizard"
-    )
+    created = call("xlide_manage_form", file_path=str(formed), action="create", form_name="Wizard")
     assert created["vba_project_created"] is True
     assert call("xlide_list_forms", file_path=str(formed))["count"] == 1
 

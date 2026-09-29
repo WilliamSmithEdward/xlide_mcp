@@ -1,12 +1,12 @@
 {
-  "contract_version": "1.2.0",
-  "digest": "sha256:145f92021f7972fcdeb6076734dc178c72132334c13e895b09ba41a93ec7b41f",
+  "contract_version": "1.2.1",
+  "digest": "sha256:caf6fdc94720747c9d7f18f4db9bed776757362a4069c7f762f495254d969017",
   "generated_with": {
     "upstream": {
-      "pyOfficeEditor": "0.4.0",
-      "pyOpenVBA": "6.2.0",
-      "pyvbaanalysis": "2.3.0",
-      "pyvbaharness": "1.1.5"
+      "pyOfficeEditor": "0.4.1",
+      "pyOpenVBA": "6.3.3",
+      "pyvbaanalysis": "2.3.1",
+      "pyvbaharness": "1.1.6"
     }
   },
   "reference_implementation": "python",
@@ -497,11 +497,11 @@
         "idempotent": false,
         "read_only": false
       },
-      "description": "Creates a new Office file with an empty VBA project at the given absolute path, from a template the application itself authored, so it opens with no repair prompt. Extensions: .xlsm, .xlsb, .xlam, .docm, .pptm, .accdb, and .xlsx for a workbook with Power Query and no macros. It never overwrites a file or replaces a project that is already there. A .xlsm, .docm or .pptm saved before its first macro has no VBA project at all; xlide_write_module gives it one along with the first module, and this tool gives an existing .docm the empty one Word makes.",
+      "description": "Creates a new Office file with an empty VBA project at the given absolute path, from a template the application itself authored, so it opens with no repair prompt. Extensions: .xlsm, .xlsb, .xlam, .docm, .pptm, .accdb, and .xlsx for a workbook with Power Query and no macros. It never overwrites a file or replaces a project that is already there. A .xlsm, .docm or .pptm saved before its first macro has no VBA project at all; xlide_write_module gives it one along with the first module. This tool also gives an existing .docm or .accdb with no project the empty one its application makes.",
       "input_schema": {
         "properties": {
           "file_path": {
-            "description": "Absolute path to create, whose extension picks the format, or an existing .docm with no VBA project.",
+            "description": "Absolute path to create, whose extension picks the format, or an existing .docm or .accdb with no VBA project.",
             "title": "File Path",
             "type": "string"
           }

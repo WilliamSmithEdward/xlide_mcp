@@ -119,7 +119,7 @@ class ProjectStatus:
 # one for a first macro in these three; a binary .xls, .doc or .ppt keeps its
 # project in storages this server does not create, and a .xlsb its workbook
 # properties in binary records.
-_PROJECT_CAN_BE_ADDED = frozenset({".xlsm", ".docm", ".pptm"})
+_PROJECT_CAN_BE_ADDED = frozenset({".xlsm", ".docm", ".pptm", ".accdb"})
 
 
 def can_add_project(info: HostInfo) -> bool:
@@ -130,18 +130,27 @@ def can_add_project(info: HostInfo) -> bool:
 def has_project(handle: Any, info: HostInfo) -> bool:
     """Whether the file holds a VBA project, empty or not.
 
-    Access always does: a blank database Access writes carries an empty project,
-    so a missing one there is damage rather than a normal state, and it stays an
-    error. A VB6 project is its manifest.
+    An Access database that never held code may have no project either. The
+    older .mdb layout is not classified this way because its project may live
+    in storage that pyOpenVBA cannot read. A VB6 project is its manifest.
     """
     check = getattr(handle, "has_vba_project", None)
-    if info.host in {"access", "vb6"} or not callable(check):
+    if info.host == "vb6" or not callable(check):
+        return True
+    if info.host == "access" and info.extension != ".accdb":
         return True
     return bool(check())
 
 
 def no_project_note(path: Path, info: HostInfo) -> str:
     """What to tell an agent about a file that has no VBA project yet."""
+    if info.extension == ".accdb":
+        return (
+            f"{path.name} has no VBA project yet. Access writes one with its first module, "
+            "form, report or macro, so this is a normal database. xlide_write_module "
+            "creates the project with the first module; xlide_create_project adds the "
+            "empty project to this existing database."
+        )
     if info.extension in _PROJECT_CAN_BE_ADDED:
         return (
             f"{path.name} has no VBA project yet. {info.title} writes none until the first "
@@ -160,7 +169,8 @@ def ensure_project(handle: Any, info: HostInfo, path: Path) -> bool:
 
     Returns whether a project was created. pyOpenVBA builds it as the application
     does: in Excel a document module for the workbook and one per sheet, in Word
-    ThisDocument, in PowerPoint nothing until a module is added.
+    ThisDocument, in PowerPoint nothing until a module is added, and in Access
+    an empty project until the first module is added.
     """
     if has_project(handle, info):
         return False
@@ -268,9 +278,7 @@ def is_standard_component(component: Any) -> bool:
     return bool(kind == pyopenvba.VBAModuleKind.standard)
 
 
-def find_module(
-    modules: list[ModuleView], name: str, *, no_project: str = ""
-) -> ModuleView:
+def find_module(modules: list[ModuleView], name: str, *, no_project: str = "") -> ModuleView:
     """Look a module up the way VBA compares names: without regard to case.
 
     `no_project` is the note for a file with no VBA project, which is the answer

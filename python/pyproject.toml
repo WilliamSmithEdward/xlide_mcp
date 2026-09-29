@@ -55,16 +55,19 @@ dependencies = [
     # parts beside vbaProject.bin; 6.1.2 made add_form reference Microsoft Forms.
     # 6.1.3 removes a form's designer storage with its module, as Office does.
     # 6.2 models named cell styles and hyperlinks in VBA's object model.
-    "pyOpenVBA>=6.2.0,<7",
+    # 6.3 handles an Access database before its first VBA project and removes
+    # stale p-code from edited modules; 6.3.3 cleans shipped Access templates.
+    "pyOpenVBA>=6.3.3,<7",
     # These upper bounds state what the conformance corpus has actually been run
     # against rather than what is expected to keep working. pyOfficeEditor is
     # pre-1.0, where a minor may move the API; pyOpenVBA 6 changed enough from 5
     # to earn a major. Raising either is the documented sync step: bump, run the
     # suite, fix what broke, regenerate the contract.
-    "pyOfficeEditor>=0.4.0,<0.5",
+    "pyOfficeEditor>=0.4.1,<0.5",
     # 2.2 takes the project's references, which the missing-library-reference
     # rule needs; 2.3 adds the XLIDE 10.14 diagnostics and runtime-error filtering.
-    "pyvbaanalysis>=2.3.0,<3",
+    # 2.3.1 tracks XLIDE 10.14.1.
+    "pyvbaanalysis>=2.3.1,<3",
 ]
 
 [project.optional-dependencies]
@@ -72,7 +75,7 @@ dependencies = [
 # 1.1.5 is the first that calls a target the right way after it changes from a Sub
 # to a Function, and 1.1.3 the first that asks a healthy Office to quit rather
 # than killing it into a Document Recovery prompt.
-live = ["pyvbaharness>=1.1.5 ; sys_platform == 'win32'"]
+live = ["pyvbaharness>=1.1.6 ; sys_platform == 'win32'"]
 dev = [
     "pytest>=8",
     "pytest-timeout>=2.3",

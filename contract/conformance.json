@@ -1,5 +1,5 @@
 {
-  "conformance_version": "1.2.0",
+  "conformance_version": "1.2.1",
   "reference_implementation": "python",
   "note": "Behaviour every implementation in this repository owes. The Python suite runs this file, so a case that is wrong fails there before a port ever sees it.",
   "requires": {
@@ -195,6 +195,13 @@
       "why": "A workbook Excel saved as .xlsm before any macro existed, which has no vbaProject.bin at all. Shipped because the point is what Excel writes: a library building a workbook would put a project in it. pyOpenVBA's scripts/measure_no_vba.py made it.",
       "contents": "One empty sheet, Sheet1, and no VBA project."
     },
+    "no_vba_database": {
+      "kind": "shipped-binary",
+      "file_name": "Empty.accdb",
+      "repository_path": "python/tests/fixtures/no_vba/database.accdb",
+      "why": "A database Access saved before its first module, form, report or macro. It has no VBA project, and pyOpenVBA 6.3 can give it one.",
+      "contents": "An Access database with no VBA project or user objects."
+    },
     "signed_workbook": {
       "kind": "excel-macro-workbook",
       "file_name": "Budget.xlsm",
@@ -214,7 +221,7 @@
       }
     }
   },
-  "case_count": 139,
+  "case_count": 142,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -3921,6 +3928,92 @@
         }
       ],
       "fixture": "no_vba_workbook"
+    },
+    {
+      "id": "no-vba.access-listings-answer-empty",
+      "why": "Access does not create a VBA project until its first module, form, report or macro. An empty listing is a normal database, not a damaged one.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "no_vba_database",
+      "expect": [
+        {
+          "path": "has_vba_project",
+          "equals": false
+        },
+        {
+          "path": "count",
+          "equals": 0
+        },
+        {
+          "path": "note",
+          "contains": "has no VBA project yet"
+        }
+      ]
+    },
+    {
+      "id": "no-vba.access-first-module-brings-the-project",
+      "why": "The first module gives an Access database its VBA project, which is then visible on a fresh read.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_write_module",
+          "arguments": {
+            "file_path": "${fixture}",
+            "module_name": "Helpers",
+            "source": "Option Compare Database\r\nOption Explicit\r\n\r\nPublic Function Twice(ByVal n As Long) As Long\r\n    Twice = n * 2\r\nEnd Function\r\n"
+          }
+        },
+        {
+          "tool": "xlide_list_modules",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "no_vba_database",
+      "expect": [
+        {
+          "path": "has_vba_project",
+          "equals": true
+        },
+        {
+          "path": "modules",
+          "contains": "Helpers"
+        }
+      ]
+    },
+    {
+      "id": "no-vba.access-can-add-an-empty-project",
+      "why": "Access keeps an empty VBA project after one is created, so an existing database may receive that project before any module is written.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_create_project",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        },
+        {
+          "tool": "xlide_project_info",
+          "arguments": {
+            "file_path": "${fixture}"
+          }
+        }
+      ],
+      "fixture": "no_vba_database",
+      "expect": [
+        {
+          "path": "has_vba_project",
+          "equals": true
+        }
+      ]
     },
     {
       "id": "signature.a-part-beside-the-project-is-seen",

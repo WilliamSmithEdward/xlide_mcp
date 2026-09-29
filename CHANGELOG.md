@@ -3,6 +3,31 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [1.2.1]
+
+Follows pyOpenVBA 6.3.3, pyOfficeEditor 0.4.1, pyVBAanalysis 2.3.1 and
+pyVBAharness 1.1.6. The server still has 65 tools; the corpus has 142
+conformance cases.
+
+### Fixed
+
+- An Access database saved before its first module, form, report or macro is
+  recognized as having no VBA project. Listings answer empty with a reason;
+  `xlide_write_module` gives it a project with the first module, and
+  `xlide_create_project` can add the empty project to an existing `.accdb`.
+- pyOpenVBA clears edited modules' stale compiled p-code, cleans its shipped
+  templates, and draws Access designs in the database's theme. pyVBAanalysis
+  2.3.1 follows XLIDE 10.14.1. These upstream fixes flow through the server.
+
+### Security
+
+- CodeQL and Semgrep scan every push, pull request, weekly run and release.
+  An unexpected finding, scan warning or incomplete scan fails the gate before
+  publishing. Every release carries the report and raw SARIF results.
+- Added a security policy, security workflow badge and Dependabot updates for
+  Python dependencies, pinned workflow actions and the scanner. Private
+  vulnerability reporting and GitHub secret scanning are enabled.
+
 ## [1.2.0]
 
 Follows pyOpenVBA 6.2.0, pyOfficeEditor 0.4.0, pyVBAanalysis 2.3.0 and
@@ -281,6 +306,7 @@ cells and document surface inside Office files, and for Visual Basic 6 projects.
 - The document surface is Excel only. Word, PowerPoint and Access reach their
   VBA, forms and catalogs, and their document surfaces follow pyOfficeEditor.
 
+[1.2.1]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.1
 [1.2.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.0
 [1.1.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.1.0
 [1.0.3]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.0.3

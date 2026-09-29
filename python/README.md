@@ -5,6 +5,10 @@
      repository's server.json. -->
 <!-- mcp-name: io.github.WilliamSmithEdward/xlide-excel-office-vba-mcp -->
 
+[![Python Version](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
+[![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml)
+
 **An MCP server for the inside of an Office file.** Read, write, analyze and
 test the VBA in Excel, Word, PowerPoint and Access, and edit the document around
 it. Visual Basic 6 projects open the same way.
@@ -103,7 +107,7 @@ With uv instead, so that nothing has to be installed first:
 }
 ```
 
-uvx takes the newest published version unless you pin it, as `xlide-mcp@1.2.0`.
+uvx takes the newest published version unless you pin it, as `xlide-mcp@1.2.1`.
 
 `--root` is the security boundary. Every path a tool accepts is resolved,
 symlinks included, and refused unless it lands inside a root.
@@ -296,6 +300,20 @@ them whether or not the user configured anything.
   written there has no result in the file until Excel next opens it.
   `calculate=true` works results out with pyOfficeEditor's formula engine, which
   names any cell it could not.
+
+An Access database that has never held code can have no VBA project.
+`xlide_write_module` creates it with the first module, or
+`xlide_create_project` adds an empty one to an existing `.accdb`.
+
+## Security
+
+Report a vulnerability through [private vulnerability reporting](https://github.com/WilliamSmithEdward/xlide_mcp/security/advisories/new), not a public issue. The [security policy](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/SECURITY.md) says what to include and which versions receive fixes.
+
+CodeQL and Semgrep scan the server and release workflows on every push, pull
+request, weekly run and release. An unexpected finding, scan warning or missing
+scan stops a release. Each successful release carries its security report and
+the SARIF results as downloadable assets. Dependabot proposes dependency and
+workflow updates for review.
 
 ## Built on
 

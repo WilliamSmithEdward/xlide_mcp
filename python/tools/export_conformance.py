@@ -314,6 +314,16 @@ FIXTURES: dict[str, Any] = {
         ),
         "contents": "One empty sheet, Sheet1, and no VBA project.",
     },
+    "no_vba_database": {
+        "kind": "shipped-binary",
+        "file_name": "Empty.accdb",
+        "repository_path": "python/tests/fixtures/no_vba/database.accdb",
+        "why": (
+            "A database Access saved before its first module, form, report or macro. "
+            "It has no VBA project, and pyOpenVBA 6.3 can give it one."
+        ),
+        "contents": "An Access database with no VBA project or user objects.",
+    },
     "signed_workbook": {
         "kind": "excel-macro-workbook",
         "file_name": "Budget.xlsm",
@@ -2883,6 +2893,52 @@ def _cases_since_1_1() -> list[dict[str, Any]]:
                     error_contains="writes no project until it holds code",
                 )
             ],
+        )
+    )
+    out.append(
+        case(
+            "no-vba.access-listings-answer-empty",
+            "Access does not create a VBA project until its first module, form, report or "
+            "macro. An empty listing is a normal database, not a damaged one.",
+            "no_vba_database",
+            [step("xlide_list_modules", {"file_path": "${fixture}"})],
+            [
+                {"path": "has_vba_project", "equals": False},
+                {"path": "count", "equals": 0},
+                {"path": "note", "contains": "has no VBA project yet"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "no-vba.access-first-module-brings-the-project",
+            "The first module gives an Access database its VBA project, which is then "
+            "visible on a fresh read.",
+            "no_vba_database",
+            [
+                step(
+                    "xlide_write_module",
+                    {"file_path": "${fixture}", "module_name": "Helpers", "source": ACCESS_MODULE},
+                ),
+                step("xlide_list_modules", {"file_path": "${fixture}"}),
+            ],
+            [
+                {"path": "has_vba_project", "equals": True},
+                {"path": "modules", "contains": "Helpers"},
+            ],
+        )
+    )
+    out.append(
+        case(
+            "no-vba.access-can-add-an-empty-project",
+            "Access keeps an empty VBA project after one is created, so an existing "
+            "database may receive that project before any module is written.",
+            "no_vba_database",
+            [
+                step("xlide_create_project", {"file_path": "${fixture}"}),
+                step("xlide_project_info", {"file_path": "${fixture}"}),
+            ],
+            [{"path": "has_vba_project", "equals": True}],
         )
     )
 

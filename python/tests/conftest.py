@@ -215,6 +215,17 @@ def no_vba_workbook(workspace: Path) -> Path:
     return target
 
 
+@pytest.fixture
+def no_vba_database(workspace: Path) -> Path:
+    """A database Access saved before its first VBA project."""
+    import shutil
+
+    source = Path(__file__).parent / "fixtures" / "no_vba" / "database.accdb"
+    target = workspace / "Empty.accdb"
+    shutil.copy2(source, target)
+    return target
+
+
 SIGNATURE_PART = "xl/vbaProjectSignature.bin"
 SIGNATURE_TYPE = "http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature"
 SIGNATURE_CONTENT = "application/vnd.ms-office.vbaProjectSignature"

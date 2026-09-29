@@ -1,0 +1,10 @@
+name: xlide-mcp security
+
+queries:
+  - uses: security-extended
+
+paths:
+  - python/src
+  - python/tools
+  - scripts/security
+  - .github

@@ -4,6 +4,7 @@
 
 [![Python Version](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
 [![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
 [![Downloads](https://static.pepy.tech/badge/xlide-mcp/month)](https://pepy.tech/project/xlide-mcp)
 
@@ -109,7 +110,7 @@ neither can still run this:
 The `live` extra is safe to ask for on every platform: what it pulls in is marked
 `sys_platform == 'win32'`, so off Windows it resolves to nothing and the same
 configuration works everywhere. Drop the `--from` pair for the file layer alone.
-uvx takes the newest published version unless you pin it, as `xlide-mcp@1.2.0`.
+uvx takes the newest published version unless you pin it, as `xlide-mcp@1.2.1`.
 
 There is a `Dockerfile` for the file layer, which is the part that needs no
 Office installation. Mount the folder holding the files at `/workspace`, because
@@ -241,6 +242,9 @@ Excel, Word and PowerPoint write no VBA project into a macro-enabled file until
 its first macro exists, so a `.xlsm` nobody has written code in yet has none.
 That is an ordinary file: the listings answer empty, and the first module
 written gives it the project its application would have made.
+An Access database that has never held code can likewise have no project;
+`xlide_write_module` creates it with the first module, or
+`xlide_create_project` adds an empty one to an existing `.accdb`.
 
 A `.xlsb` keeps its grid in binary records and a `.xls` inside a compound file,
 neither of them OOXML. On Windows with Excel, those go through Excel, and the
@@ -323,6 +327,16 @@ them whether or not the user configured anything.
 - A cell value is what Excel last calculated. A formula written here has no result
   in the file until Excel next opens it. `calculate=true` works results out with
   pyOfficeEditor's formula engine, which names any cell it could not.
+
+## Security
+
+Report a vulnerability through [private vulnerability reporting](https://github.com/WilliamSmithEdward/xlide_mcp/security/advisories/new), not a public issue. [SECURITY.md](SECURITY.md) says what to include and which versions receive fixes.
+
+CodeQL and Semgrep scan the server and release workflows on every push, pull
+request, weekly run and release. An unexpected finding, scan warning or missing
+scan stops a release. Each successful release carries its security report and
+the SARIF results as downloadable assets. Dependabot proposes dependency and
+workflow updates for review.
 
 ## Built on
 

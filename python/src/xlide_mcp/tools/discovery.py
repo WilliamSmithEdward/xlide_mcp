@@ -178,9 +178,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     )
     def validate_project(
         file_path: Annotated[str, Field(description="Absolute path to the Office file.")],
-        offset: Annotated[
-            int, Field(default=0, ge=0, description="Problems to skip.")
-        ] = 0,
+        offset: Annotated[int, Field(default=0, ge=0, description="Problems to skip.")] = 0,
         max_results: Annotated[
             int, Field(default=300, ge=1, le=300, description="Most problems to return.")
         ] = 300,
@@ -236,7 +234,8 @@ def register(server: MCPServer, settings: Settings) -> None:
             "workbook with Power Query and no macros. It never overwrites a file or replaces "
             "a project that is already there. A .xlsm, .docm or .pptm saved before its first "
             "macro has no VBA project at all; xlide_write_module gives it one along with the "
-            "first module, and this tool gives an existing .docm the empty one Word makes."
+            "first module. This tool also gives an existing .docm or .accdb with no project "
+            "the empty one its application makes."
         ),
     )
     def create_project(
@@ -245,7 +244,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             Field(
                 description=(
                     "Absolute path to create, whose extension picks the format, or an existing "
-                    ".docm with no VBA project."
+                    ".docm or .accdb with no VBA project."
                 )
             ),
         ],
@@ -336,11 +335,9 @@ def _add_project(path: Path) -> dict[str, Any]:
     Refused for everything else, with the reason: a file that has a project keeps
     it, and a format that cannot take one is named rather than written to.
 
-    Only Word keeps a project with no code in it, ThisDocument alone. Excel and
-    PowerPoint write none until it holds a module, and pyOpenVBA saves as they
-    do, so for a .xlsm or .pptm there is nothing an empty project would leave in
-    the file. Saying so beats reporting a project that the next read will not
-    find: the first xlide_write_module brings the project with it.
+    Word keeps a project with no code in it, ThisDocument alone. Access also
+    keeps an empty project once one has been created. Excel and PowerPoint write
+    none until it holds a module, so the first xlide_write_module brings theirs.
     """
     if not path.is_file():
         raise ToolError(f"{path} exists and is not a file.")
@@ -356,7 +353,7 @@ def _add_project(path: Path) -> dict[str, Any]:
                 f"{path} already exists, with a VBA project. This tool never overwrites a "
                 "file or replaces a project; write modules into it with xlide_write_module."
             )
-        if info.host != "word":
+        if info.host not in {"word", "access"}:
             raise ToolError(
                 f"{path} already exists, with no VBA project, and an empty one cannot be "
                 f"added to it: {info.title} writes no project until it holds code, and "
@@ -376,8 +373,11 @@ def _add_project(path: Path) -> dict[str, Any]:
         "host": info.host,
         "modules": modules if kept else [],
         "note": (
-            f"{path.name} now has the VBA project Word makes for a first macro, ThisDocument "
-            "and nothing else. Add code with xlide_write_module."
+            f"{path.name} now has the empty VBA project Access makes before its first "
+            "module. Add code with xlide_write_module."
+            if info.host == "access"
+            else f"{path.name} now has the VBA project Word makes for a first macro, "
+            "ThisDocument and nothing else. Add code with xlide_write_module."
         ),
     }
     notice = xlide_vscode.file_changed(path, "vba", tool="xlide_create_project")
