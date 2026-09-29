@@ -8,6 +8,7 @@
 [![Python Version](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
 [![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
 [![Security](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml)
+[![Malware scan](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml)
 
 **An MCP server for the inside of an Office file.** Read, write, analyze and
 test the VBA in Excel, Word, PowerPoint and Access, and edit the document around

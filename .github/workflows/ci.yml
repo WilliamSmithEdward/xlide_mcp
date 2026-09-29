@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  python:
-    name: python ${{ matrix.python }} on ${{ matrix.os }}
+  test:
+    name: Test (Python ${{ matrix.python }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -56,7 +56,7 @@ jobs:
   ci-passed:
     name: CI passed
     if: always()
-    needs: [python]
+    needs: [test]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

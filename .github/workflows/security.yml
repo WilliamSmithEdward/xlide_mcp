@@ -1,8 +1,7 @@
 name: Security
 
 # CodeQL and Semgrep over the server and the workflows that build and
-# publish it, and ClamAV and YARA-X over every tracked file for malware and
-# suspicious content. scripts/security/security_report.py then holds every
+# publish it. scripts/security/security_report.py then holds every
 # finding, and every warning a tool raises about its scan, to
 # .github/security/accepted.toml, and fails on anything that file does not
 # account for. The publish workflow calls this one, so a release waits on
@@ -14,8 +13,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Daily, so new signatures, rules and queries reach files that have
-    # not changed.
+    # Daily, so new rules and queries reach files that have not changed.
     - cron: "23 5 * * *"
   workflow_dispatch:
   workflow_call:
@@ -109,76 +107,10 @@ jobs:
           path: semgrep.sarif
           if-no-files-found: error
 
-  malware:
-    name: ClamAV + YARA-X
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      # Exactly the tracked files, as a release's source is: nothing the
-      # runner or an earlier step left in the checkout.
-      - name: Take the tracked files
-        run: |
-          mkdir scan-tree malware
-          git archive HEAD | tar -x -C scan-tree
-
-      # The image is pinned; the signatures are not. freshclam fetches and
-      # verifies today's on every run, and the version scanned with lands in
-      # the report.
-      - name: ClamAV
-        run: |
-          docker build -q -t xlide-clamav .github/security/clamav
-          docker run --rm --entrypoint sh \
-            -v "$PWD/scan-tree:/scan:ro" -v "$PWD/malware:/out" \
-            -v "$PWD/.github/security/clamav/scan.sh:/scan.sh:ro" \
-            xlide-clamav /scan.sh
-          version="$(sed 's/^ClamAV //' malware/clamav-version.txt 2>/dev/null || echo unknown)"
-          python scripts/security/malware_sarif.py clamav malware/clamav.log \
-            --version "$version" --errors malware/clamav.err \
-            --status "$(cat malware/clamav.status)" --root scan-tree --out clamav.sarif
-
-      # The scanner and the rules are both exact releases, checked against the
-      # SHA-256 GitHub records for each asset, from .github/security/yara.env.
-      - name: YARA-X with the YARA Forge rules
-        run: |
-          set -a; . .github/security/yara.env; set +a
-          base=https://github.com
-          curl -fsSL -o yr.tgz \
-            "$base/VirusTotal/yara-x/releases/download/$YARA_X_VERSION/yara-x-$YARA_X_VERSION-x86_64-unknown-linux-gnu.tar.gz"
-          echo "$YARA_X_SHA256  yr.tgz" | sha256sum -c -
-          curl -fsSL -o forge.zip \
-            "$base/YARAHQ/yara-forge/releases/download/$YARA_FORGE_RELEASE/yara-forge-rules-full.zip"
-          echo "$YARA_FORGE_SHA256  forge.zip" | sha256sum -c -
-          tar -xzf yr.tgz yr
-          unzip -q forge.zip -d forge
-          # -w: the warnings are about the rules' own style, not this code.
-          ./yr compile -w forge/packages/full/yara-rules-full.yar -o rules.yarc
-          status=0
-          ./yr scan --compiled-rules -r -o ndjson rules.yarc scan-tree \
-            > malware/yara.ndjson 2> malware/yara.err || status=$?
-          python scripts/security/malware_sarif.py yara malware/yara.ndjson \
-            --version "$YARA_X_VERSION, YARA Forge full $YARA_FORGE_RELEASE" \
-            --errors malware/yara.err --status "$status" --root scan-tree --out yara-x.sarif
-
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: sarif-malware
-          path: |
-            clamav.sarif
-            yara-x.sarif
-          if-no-files-found: error
-
   report:
     name: Security report
     if: always()
-    needs: [codeql, semgrep, malware]
+    needs: [codeql, semgrep]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -201,14 +133,12 @@ jobs:
         env:
           CODEQL_JOB_RESULT: ${{ needs.codeql.result }}
           SEMGREP_JOB_RESULT: ${{ needs.semgrep.result }}
-          MALWARE_JOB_RESULT: ${{ needs.malware.result }}
         run: |
           mkdir -p security-report
           python scripts/security/security_report.py security-report \
             --accepted .github/security/accepted.toml \
             --out security-report/security-report.md \
-            --require codeql-python --require codeql-actions --require semgrep \
-            --require clamav --require yara-x
+            --require codeql-python --require codeql-actions --require semgrep
 
       - name: Show the report on the run
         if: always()
@@ -223,3 +153,19 @@ jobs:
           name: security-report
           path: security-report/
           if-no-files-found: error
+
+  security-passed:
+    name: Security passed
+    if: always()
+    needs: [codeql, semgrep, report]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check every security job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          for result in $RESULTS; do
+            [ "$result" = success ] || exit 1
+          done

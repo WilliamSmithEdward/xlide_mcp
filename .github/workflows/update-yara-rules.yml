@@ -1,9 +1,9 @@
-name: YARA Forge update
+name: Update YARA rules
 
 # Weekly: propose the newest YARA Forge release that is at least a week old,
 # pinned to its tag and the SHA-256 GitHub records for its rules archive, in a
 # pull request. A pull request this workflow opens with its own token starts no
-# other workflow, so it starts the Security workflow on the branch itself, and
+# other workflow, so it starts the Malware scan workflow on the branch itself, and
 # that scan runs with the new rules before anyone merges them.
 #
 # Opening the pull request needs the repository setting "Allow GitHub Actions to
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   propose:
-    name: Propose the next YARA Forge release
+    name: Propose a YARA rule update
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -70,7 +70,7 @@ jobs:
           git push origin "$branch"
           gh pr create --base main --head "$branch" \
             --title "ci: YARA Forge rules $tag" \
-            --body "Moves the Security workflow's YARA Forge rules from $YARA_FORGE_RELEASE to $tag, pinned to the SHA-256 GitHub records for yara-forge-rules-full.zip: $sha.
+            --body "Moves the Malware scan workflow's YARA Forge rules from $YARA_FORGE_RELEASE to $tag, pinned to the SHA-256 GitHub records for yara-forge-rules-full.zip: $sha.
 
-          The Security workflow is running on this branch with the new rules. Merge once it passes; a new hit either gets fixed or goes in .github/security/accepted.toml with a reason."
-          gh workflow run security.yml --ref "$branch"
+          The Malware scan workflow is running on this branch with the new rules. Merge once it passes; a new hit either gets fixed or goes in .github/security/malware-accepted.toml with a reason."
+          gh workflow run malware-scan.yml --ref "$branch"

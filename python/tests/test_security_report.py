@@ -21,7 +21,10 @@ pytest.importorskip("tomllib")
 
 ROOT = Path(__file__).parents[2]
 SCRIPT = ROOT / "scripts" / "security" / "security_report.py"
-ACCEPTED = ROOT / ".github" / "security" / "accepted.toml"
+ACCEPTED = [
+    ROOT / ".github" / "security" / name
+    for name in ("accepted.toml", "malware-accepted.toml")
+]
 
 
 def load() -> ModuleType:
@@ -256,10 +259,11 @@ def test_a_malformed_list_is_refused_whole(entry: str) -> None:
         load().load_accepted(entry)
 
 
-def test_the_repository_s_list_names_lines_the_source_holds() -> None:
+@pytest.mark.parametrize("accepted", ACCEPTED, ids=lambda path: path.name)
+def test_the_repository_s_list_names_lines_the_source_holds(accepted: Path) -> None:
     """Each accepted place quotes a line its file has, so the list can be
     read against the code without running a scan."""
-    findings, _notices = load().load_accepted(ACCEPTED.read_text(encoding="utf-8"))
+    findings, _notices = load().load_accepted(accepted.read_text(encoding="utf-8"))
     for entry in findings:
         assert entry.reason
         for place in entry.where:

@@ -1,6 +1,6 @@
 # Dependabot proposes updates for the upstream libraries, CI actions, the
-# Semgrep version and the ClamAV image used by the Security workflow. The
-# YARA Forge rules have their own weekly updater, yara-forge-update.yml. Review upstream library PRs
+# Semgrep version and the ClamAV image used by the Malware scan workflow. The
+# YARA Forge rules have their own weekly updater, update-yara-rules.yml. Review upstream library PRs
 # against the conformance corpus before merging; no update is automatic.
 #
 # A release waits a week before it is proposed, long enough for most

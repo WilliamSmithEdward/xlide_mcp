@@ -405,8 +405,8 @@ def main(argv: list[str] | None = None) -> int:
         for path in sorted(args.sarif_dir.glob("*.sarif"))
     ]
     outcome = check(scans, accepted, accepted_notices, args.require)
-    for name in ("codeql", "semgrep", "malware"):
-        status = os.environ.get(f"{name.upper()}_JOB_RESULT")
+    for name in ("codeql", "semgrep", "clamav", "yara-x"):
+        status = os.environ.get(f"{name.upper().replace('-', '_')}_JOB_RESULT")
         if status is not None and status != "success":
             outcome.failed_jobs.append(f"{name}:{status}")
     text = report(outcome, provenance(dt.datetime.now(dt.timezone.utc)))
