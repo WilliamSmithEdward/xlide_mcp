@@ -3,7 +3,10 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
-## [Unreleased]
+## [1.2.2]
+
+A security and supply-chain patch. The server's tools and their answers are
+unchanged: 65 tools and 142 conformance cases, as in 1.2.1.
 
 ### Added
 
@@ -18,6 +21,7 @@ Notable changes to `xlide-mcp`. The version lives in
 
 - Runners are named OS releases rather than `-latest`, and the release
   workflow installs an exact mcp-publisher checked against its SHA-256.
+- The CI workflow's token is read-only.
 
 ## [1.2.1]
 

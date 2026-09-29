@@ -77,7 +77,7 @@ A module this server wrote, created or deleted.
   "kind": "standard",
   "tool": "xlide_write_module",
   "server": "xlide_mcp",
-  "serverVersion": "1.2.1",
+  "serverVersion": "1.2.2",
   "protocol": 1
 }
 ```
