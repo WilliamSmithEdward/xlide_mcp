@@ -3,6 +3,22 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [Unreleased]
+
+### Added
+
+- ClamAV and YARA-X scan every tracked file in the Security workflow, as their
+  own job. ClamAV fetches today's signatures on every run and also flags any
+  Office file with VBA; YARA-X uses the full YARA Forge rules, pinned to a
+  release and its SHA-256, and a weekly workflow proposes the next release in a
+  pull request. Their hits go through the accepted list like every other
+  finding, pinned to the file's SHA-256. The Security workflow runs daily.
+
+### Changed
+
+- Runners are named OS releases rather than `-latest`, and the release
+  workflow installs an exact mcp-publisher checked against its SHA-256.
+
 ## [1.2.1]
 
 Follows pyOpenVBA 6.3.3, pyOfficeEditor 0.4.1, pyVBAanalysis 2.3.1 and

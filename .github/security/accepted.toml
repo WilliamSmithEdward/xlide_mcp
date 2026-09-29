@@ -1,6 +1,21 @@
 # Every accepted CodeQL or Semgrep finding needs a rule, source line and reason.
+# A ClamAV or YARA-X hit has no source line: its place names the file's
+# SHA-256 as "sha256:<hex>", so a changed file is a new finding.
 # The report fails on an unlisted finding, a scan warning or a stale entry.
 # Keep this file empty unless a reviewer can explain a specific false positive.
+
+[[finding]]
+tool = "ClamAV"
+rule = "Heuristics.OLE2.ContainsMacros.VBA"
+where = [
+    { path = "python/tests/fixtures/shapes.xlsm", line = "sha256:0b157d64206a31390781313bf78d4563e6c1db28fa4ad44a36989e2c97d90873" },
+]
+reason = """
+A test fixture that holds VBA on purpose: Excel saved it with a Forms button
+whose macro the shape tests read and repoint, which cannot be built without
+Excel. The heuristic fires on any workbook with a VBA project, because the
+scan runs with --alert-macros to catch one arriving anywhere else.
+"""
 
 [[finding]]
 tool = "Semgrep"

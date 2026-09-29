@@ -332,8 +332,9 @@ them whether or not the user configured anything.
 
 Report a vulnerability through [private vulnerability reporting](https://github.com/WilliamSmithEdward/xlide_mcp/security/advisories/new), not a public issue. [SECURITY.md](SECURITY.md) says what to include and which versions receive fixes.
 
-CodeQL and Semgrep scan the server and release workflows on every push, pull
-request, weekly run and release. An unexpected finding, scan warning or missing
+CodeQL and Semgrep scan the server and release workflows, and ClamAV and
+YARA-X, with the YARA Forge rules, scan every tracked file, on every push, pull
+request, daily run and release. An unexpected finding, scan warning or missing
 scan stops a release. Each successful release carries its security report and
 the SARIF results as downloadable assets. Dependabot proposes dependency and
 workflow updates for review.

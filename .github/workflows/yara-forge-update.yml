@@ -1,0 +1,76 @@
+name: YARA Forge update
+
+# Weekly: propose the newest YARA Forge release that is at least a week old,
+# pinned to its tag and the SHA-256 GitHub records for its rules archive, in a
+# pull request. A pull request this workflow opens with its own token starts no
+# other workflow, so it starts the Security workflow on the branch itself, and
+# that scan runs with the new rules before anyone merges them.
+#
+# Opening the pull request needs the repository setting "Allow GitHub Actions to
+# create and approve pull requests".
+
+on:
+  schedule:
+    - cron: "41 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  propose:
+    name: Propose the next YARA Forge release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Propose it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          . .github/security/yara.env
+          cutoff="$(date -u -d '7 days ago' +%s)"
+          tag="$(gh api repos/YARAHQ/yara-forge/releases --jq "
+            [.[] | select((.draft or .prerelease) | not)
+                 | select((.published_at | fromdateiso8601) <= $cutoff)][0].tag_name // empty")"
+          # The tag and digest come from another repository: take only the
+          # shapes they are known to have before they reach a file or a command.
+          if ! [[ "$tag" =~ ^[0-9]{8}$ ]]; then
+            echo "No usable YARA Forge release a week old: '$tag'"; exit 1
+          fi
+          if [ "$tag" = "$YARA_FORGE_RELEASE" ]; then
+            echo "YARA Forge $tag is current."; exit 0
+          fi
+          branch="security/yara-forge-$tag"
+          if git ls-remote --exit-code origin "refs/heads/$branch" > /dev/null; then
+            echo "$branch is already proposed."; exit 0
+          fi
+          digest="$(gh api "repos/YARAHQ/yara-forge/releases/tags/$tag" \
+            --jq '.assets[] | select(.name == "yara-forge-rules-full.zip") | .digest')"
+          sha="${digest#sha256:}"
+          if ! [[ "$digest" == sha256:* && "$sha" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "GitHub records no SHA-256 for $tag's rules: '$digest'"; exit 1
+          fi
+
+          sed -i -e "s/^YARA_FORGE_RELEASE=.*/YARA_FORGE_RELEASE=$tag/" \
+                 -e "s/^YARA_FORGE_SHA256=.*/YARA_FORGE_SHA256=$sha/" .github/security/yara.env
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git commit -am "ci: YARA Forge rules $tag"
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "ci: YARA Forge rules $tag" \
+            --body "Moves the Security workflow's YARA Forge rules from $YARA_FORGE_RELEASE to $tag, pinned to the SHA-256 GitHub records for yara-forge-rules-full.zip: $sha.
+
+          The Security workflow is running on this branch with the new rules. Merge once it passes; a new hit either gets fixed or goes in .github/security/accepted.toml with a reason."
+          gh workflow run security.yml --ref "$branch"

@@ -1,5 +1,6 @@
-# Dependabot proposes updates for the upstream libraries, CI actions and the
-# Semgrep version used by the Security workflow. Review upstream library PRs
+# Dependabot proposes updates for the upstream libraries, CI actions, the
+# Semgrep version and the ClamAV image used by the Security workflow. The
+# YARA Forge rules have their own weekly updater, yara-forge-update.yml. Review upstream library PRs
 # against the conformance corpus before merging; no update is automatic.
 #
 # A release waits a week before it is proposed, long enough for most
@@ -18,6 +19,15 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /.github/security/clamav
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
 
   - package-ecosystem: pip
     directory: /.github/security

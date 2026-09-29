@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     name: Build distributions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: python
@@ -88,7 +88,7 @@ jobs:
     name: Publish to PyPI
     needs: [build, security]
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: pypi
       url: https://pypi.org/project/xlide-mcp/
@@ -113,7 +113,7 @@ jobs:
     # does not exist yet.
     needs: publish
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       # OIDC is how mcp-publisher proves the io.github.WilliamSmithEdward
       # namespace. No token and no secret.
@@ -124,9 +124,20 @@ jobs:
         with:
           persist-credentials: false
 
+      # An exact release, checked against the SHA-256 GitHub records for the
+      # asset. No updater follows a release download: to move it, take a
+      # release of modelcontextprotocol/registry at least a week old and its
+      # mcp-publisher_linux_amd64.tar.gz digest from
+      # gh api repos/modelcontextprotocol/registry/releases/tags/<tag>.
       - name: Install mcp-publisher
+        env:
+          VERSION: v1.8.1
+          SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
         run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+          curl -fsSL -o mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/$VERSION/mcp-publisher_linux_amd64.tar.gz"
+          echo "$SHA256  mcp-publisher.tar.gz" | sha256sum -c -
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
 
       - name: Authenticate
         run: ./mcp-publisher login github-oidc
@@ -154,7 +165,7 @@ jobs:
     name: Create GitHub Release
     needs: [publish, security]
     if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:

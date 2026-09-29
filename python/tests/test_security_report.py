@@ -263,6 +263,13 @@ def test_the_repository_s_list_names_lines_the_source_holds() -> None:
     for entry in findings:
         assert entry.reason
         for place in entry.where:
+            if entry.tool in {"ClamAV", "YARA-X"}:
+                # A content hit is accepted for those exact bytes.
+                import hashlib
+
+                held = hashlib.sha256((ROOT / place.path).read_bytes()).hexdigest()
+                assert place.line == f"sha256:{held}", f"{place.path} has changed"
+                continue
             lines = [
                 line.strip()
                 for line in (ROOT / place.path).read_text(encoding="utf-8").splitlines()

@@ -1,6 +1,7 @@
 """Hold the security scans to the accepted list and write the security report.
 
-CodeQL and Semgrep each write SARIF.  Every result in it has to be one
+CodeQL and Semgrep each write SARIF, and malware_sarif.py writes it for
+ClamAV and YARA-X.  Every result in it has to be one
 that ``.github/security/accepted.toml`` lists, and so does every warning
 or error a tool raised while it scanned.  Anything else is unexpected and
 fails the check.  So does an accepted entry that matches nothing, since a
@@ -131,9 +132,14 @@ class Outcome:
         )
 
 
+#: Scanners that match file content rather than a line of source.  A hit's
+#: text is the file's SHA-256, which malware_sarif.py puts in the snippet.
+CONTENT_TOOLS = {"ClamAV", "YARA-X"}
+
+
 def tool_of(name: str) -> str:
     """The tool a SARIF run comes from, as the accepted list names it."""
-    for tool in ("CodeQL", "Semgrep"):
+    for tool in ("CodeQL", "Semgrep", *sorted(CONTENT_TOOLS)):
         if name.startswith(tool):
             return tool
     return name
@@ -234,7 +240,10 @@ def _finding(
     region: dict[str, Any] = physical.get("region", {})
     line = int(region.get("startLine", 0))
     snippet: str = region.get("snippet", {}).get("text", "")
-    text = _source_line(source_root / path, line) or snippet
+    if scan.tool in CONTENT_TOOLS:
+        text = snippet
+    else:
+        text = _source_line(source_root / path, line) or snippet
     return Finding(
         scan.name,
         scan.tool,
@@ -396,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
         for path in sorted(args.sarif_dir.glob("*.sarif"))
     ]
     outcome = check(scans, accepted, accepted_notices, args.require)
-    for name in ("codeql", "semgrep"):
+    for name in ("codeql", "semgrep", "malware"):
         status = os.environ.get(f"{name.upper()}_JOB_RESULT")
         if status is not None and status != "success":
             outcome.failed_jobs.append(f"{name}:{status}")
