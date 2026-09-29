@@ -1,3 +1,17 @@
 # Every accepted CodeQL or Semgrep finding needs a rule, source line and reason.
 # The report fails on an unlisted finding, a scan warning or a stale entry.
 # Keep this file empty unless a reviewer can explain a specific false positive.
+
+[[finding]]
+tool = "Semgrep"
+rule = "python.django.security.injection.command.subprocess-injection.subprocess-injection"
+where = [
+    { path = "python/src/xlide_mcp/office_apps.py", line = "finished = subprocess.run(" },
+]
+reason = """
+The subprocess command is a fixed list: the current Python executable, -m,
+and this package's office_apps module. The caller's request is JSON sent on
+stdin, never a command argument or a shell string. shell=True is not used;
+cwd is the installed package parent, not caller input. The timeout applies
+to this worker, not to the user's Office process.
+"""
