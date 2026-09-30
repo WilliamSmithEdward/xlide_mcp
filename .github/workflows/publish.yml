@@ -4,7 +4,7 @@ name: Publish
 # python/src/xlide_mcp/_version.py, and a tag that disagrees with it stops the
 # build rather than publishing a distribution whose number is a guess.
 #
-# Started by hand, this is a dry run unless dry_run is unticked: it builds,
+# Started by hand, this is always a dry run: it builds,
 # scans and assembles the release files exactly as a release would, and
 # uploads them as the release-preview artifact instead of publishing anything.
 
@@ -13,11 +13,6 @@ on:
     tags:
       - "v*.*.*"
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: Build, scan and assemble the release, but publish nothing
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -102,7 +97,7 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: [build, security, malware-scan]
-    if: ${{ startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -127,7 +122,7 @@ jobs:
     # in it, so a registry publish that ran first would fail on a package that
     # does not exist yet.
     needs: publish
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ startsWith(github.ref, 'refs/tags/') && github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     permissions:
       # OIDC is how mcp-publisher proves the io.github.WilliamSmithEdward
@@ -184,12 +179,12 @@ jobs:
     if: >-
       ${{ !cancelled() && needs.build.result == 'success'
       && needs.security.result == 'success' && needs.malware-scan.result == 'success'
-      && (needs.publish.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)) }}
+      && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
-      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
