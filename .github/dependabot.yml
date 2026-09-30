@@ -45,7 +45,9 @@ updates:
       prefix: ci
 
   - package-ecosystem: pip
-    directory: /.github/security
+    directories:
+      - /.github/security
+      - /.github/requirements
     schedule:
       interval: weekly
     cooldown:
