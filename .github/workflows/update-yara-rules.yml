@@ -1,76 +1,85 @@
 name: Update YARA rules
 
-# Weekly: propose the newest YARA Forge release that is at least a week old,
-# pinned to its tag and the SHA-256 GitHub records for its rules archive, in a
-# pull request. A pull request this workflow opens with its own token starts no
-# other workflow, so it starts the Malware scan workflow on the branch itself, and
-# that scan runs with the new rules before anyone merges them.
+# The same in every repository; the canonical copy lives in
+# WilliamSmithEdward/repo-standards (templates/yara). Each Monday, and on
+# demand, proposes the newest YARA pins .github/security/yara_update.py allows
+# in a pull request, which CI, Security and Malware scan check before anyone
+# merges it.
 #
-# Opening the pull request needs the repository setting "Allow GitHub Actions to
-# create and approve pull requests".
+# Two jobs, so the untrusted release metadata is only ever read without write
+# access: `prepare` works out the move with a read-only token, `propose` checks
+# the proposal against the pin file on main and commits it through the GitHub
+# API. No checkout keeps credentials. Needs the repository setting "Allow GitHub
+# Actions to create and approve pull requests".
 
 on:
   schedule:
-    - cron: "41 6 * * 2"
+    - cron: "37 6 * * 1"
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: update-yara-rules
+  cancel-in-progress: false
+
 jobs:
-  propose:
-    name: Propose a YARA rule update
+  prepare:
+    name: Work out the YARA pin update
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: write
+    outputs:
+      changed: ${{ steps.prepare.outputs.changed }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Propose it
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      - name: Work out the move
+        id: prepare
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          . .github/security/yara.env
-          cutoff="$(date -u -d '7 days ago' +%s)"
-          tag="$(gh api repos/YARAHQ/yara-forge/releases --jq "
-            [.[] | select((.draft or .prerelease) | not)
-                 | select((.published_at | fromdateiso8601) <= $cutoff)][0].tag_name // empty")"
-          # The tag and digest come from another repository: take only the
-          # shapes they are known to have before they reach a file or a command.
-          if ! [[ "$tag" =~ ^[0-9]{8}$ ]]; then
-            echo "No usable YARA Forge release a week old: '$tag'"; exit 1
-          fi
-          if [ "$tag" = "$YARA_FORGE_RELEASE" ]; then
-            echo "YARA Forge $tag is current."; exit 0
-          fi
-          branch="security/yara-forge-$tag"
-          if git ls-remote --exit-code origin "refs/heads/$branch" > /dev/null; then
-            echo "$branch is already proposed."; exit 0
-          fi
-          digest="$(gh api "repos/YARAHQ/yara-forge/releases/tags/$tag" \
-            --jq '.assets[] | select(.name == "yara-forge-rules-full.zip") | .digest')"
-          sha="${digest#sha256:}"
-          if ! [[ "$digest" == sha256:* && "$sha" =~ ^[0-9a-f]{64}$ ]]; then
-            echo "GitHub records no SHA-256 for $tag's rules: '$digest'"; exit 1
-          fi
+        run: python .github/security/yara_update.py prepare --out "$RUNNER_TEMP/proposal"
 
-          sed -i -e "s/^YARA_FORGE_RELEASE=.*/YARA_FORGE_RELEASE=$tag/" \
-                 -e "s/^YARA_FORGE_SHA256=.*/YARA_FORGE_SHA256=$sha/" .github/security/yara.env
-          gh auth setup-git
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          git commit -am "ci: YARA Forge rules $tag"
-          git push origin "$branch"
-          gh pr create --base main --head "$branch" \
-            --title "ci: YARA Forge rules $tag" \
-            --body "Moves the Malware scan workflow's YARA Forge rules from $YARA_FORGE_RELEASE to $tag, pinned to the SHA-256 GitHub records for yara-forge-rules-full.zip: $sha.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.prepare.outputs.changed == 'true'
+        with:
+          name: yara-proposal
+          path: ${{ runner.temp }}/proposal/
+          if-no-files-found: error
+          retention-days: 7
 
-          The Malware scan workflow is running on this branch with the new rules. Merge once it passes; a new hit either gets fixed or goes in .github/security/malware-accepted.toml with a reason."
-          gh workflow run malware-scan.yml --ref "$branch"
+  propose:
+    name: Propose a YARA rule update
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # the update branch and its commit, through the API
+      pull-requests: write # the pull request
+      actions: write # starting CI, Security and Malware scan on the branch
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: yara-proposal
+          path: ${{ runner.temp }}/proposal
+
+      - name: Propose the update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/security/yara_update.py propose --in "$RUNNER_TEMP/proposal"
