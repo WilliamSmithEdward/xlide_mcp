@@ -20,6 +20,7 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+        update-types: [minor, patch]
 
   # The Python base of the server image. Moving to a new Python minor version
   # is a deliberate change, so only 3.12 releases are proposed.
@@ -34,6 +35,10 @@ updates:
     ignore:
       - dependency-name: python
         versions: [">=3.13"]
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   # The Semgrep and ClamAV images the scans run, each pinned by digest in a
   # one-line Dockerfile.
@@ -47,23 +52,37 @@ updates:
       default-days: 7
     commit-message:
       prefix: ci
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   # The build tools the Publish workflow installs, hash-locked in
   # .github/requirements.
   - package-ecosystem: pip
     directory: /.github/requirements
     schedule:
-      interval: weekly
+      interval: daily
     cooldown:
       default-days: 7
+      exclude: [pyopenvba, pyofficeeditor, pyprettyvba, pyvbareference, pyvbaanalysis, pyvbaharness, xlide-mcp]
     commit-message:
       prefix: ci
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
 
   - package-ecosystem: pip
     directory: /python
     schedule:
-      interval: weekly
+      interval: daily
     cooldown:
       default-days: 7
+      exclude: [pyopenvba, pyofficeeditor, pyprettyvba, pyvbareference, pyvbaanalysis, pyvbaharness, xlide-mcp]
     commit-message:
       prefix: chore
+    groups:
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
