@@ -21,3 +21,18 @@ CodeQL runs its security-extended queries over Python and GitHub Actions. Semgre
 Every action is pinned to a commit SHA, the ClamAV image to a digest, and each downloaded tool to an exact release checked against its SHA-256.
 
 The release workflow waits for the security workflow before publishing to PyPI or creating a GitHub release. Each release carries a versioned security report and the raw SARIF results as assets. GitHub secret scanning with push protection and Dependabot security updates are enabled. Dependabot also proposes package and workflow updates for review. Publishing uses PyPI Trusted Publishing; no PyPI upload token is stored in the repository.
+
+## Verifying a download
+
+Every file on PyPI carries PyPI's own provenance, which names this
+repository's `publish.yml` as the publisher; the file's page on PyPI shows it.
+Releases published after 2026-09-30 also carry a GitHub build provenance
+attestation, which you can check against any copy of the file, from PyPI or
+from the GitHub release:
+
+```
+pip download xlide-mcp --no-deps -d check
+gh attestation verify check/<file> --owner WilliamSmithEdward
+```
+
+The output names the commit and workflow run that built the file.
