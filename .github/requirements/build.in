@@ -3,5 +3,9 @@
 # tree:
 #   uv pip compile build.in --universal --generate-hashes --python-version 3.12 -o build.txt
 # Dependabot proposes each new release.
+# setuptools and wheel are the build backend: the build runs with
+# --no-isolation, so they come from this lock rather than a fresh download.
 build==1.6.1
 twine==7.0.0
+setuptools==84.0.0
+wheel==0.48.0
