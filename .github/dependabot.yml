@@ -1,5 +1,6 @@
 # Dependabot proposes updates for the upstream libraries, CI actions, the
-# Semgrep version and the ClamAV image used by the Malware scan workflow. The
+# Semgrep version, the server image's Python base and the ClamAV image used by
+# the Malware scan workflow. The
 # YARA Forge rules have their own weekly updater, update-yara-rules.yml. Review upstream library PRs
 # against the conformance corpus before merging; no update is automatic.
 #
@@ -19,6 +20,20 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # The Python base of the server image. Moving to a new Python minor version
+  # is a deliberate change, so only 3.12 releases are proposed.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: chore
+    ignore:
+      - dependency-name: python
+        versions: [">=3.13"]
 
   - package-ecosystem: docker
     directory: /.github/security/clamav
