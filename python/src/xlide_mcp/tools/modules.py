@@ -93,7 +93,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             modules = project_layer.read_modules(handle, info)
             has_project = project_layer.has_project(handle, info)
         shown, next_offset = page(
@@ -160,7 +160,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             module = project_layer.find_module_in(handle, info, path, module_name)
 
         source = module.full_source if include_header else module.body
@@ -259,7 +259,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             module = project_layer.find_module_in(handle, info, path, module_name)
         procedures = _procedures(module.body)
         shown, next_offset = page(procedures, "procedures", offset, max_results)
@@ -318,7 +318,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         except re.error as exc:
             raise ToolError(f"Not a valid regular expression: {exc}.") from exc
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             modules = project_layer.read_modules(handle, info)
             has_project = project_layer.has_project(handle, info)
 
@@ -424,7 +424,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         if wanted_kind not in {"standard", "class"}:
             raise ToolError("kind must be 'standard' or 'class'.")
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             # A file saved before its first macro has no project to add a module
             # to. It gets the one its application makes, which in Excel already
             # holds ThisWorkbook and a module per sheet, so the lookup below runs
@@ -487,7 +487,7 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         # Read back rather than trust the write. The project re-derives the body
         # from what it stored, and that is the text the next read will return.
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             after = project_layer.find_module(
                 project_layer.read_modules(handle, info), written_name
             )
@@ -580,7 +580,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             raise ToolError("expected_content_token is required. Read the module first.")
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             module = project_layer.find_module_in(handle, info, path, module_name)
         stale = check_content_token(module.body, expected_content_token, module.name)
         if stale is not None:
@@ -640,7 +640,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         require_writable(settings, "xlide_rename_module")
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             modules = project_layer.read_modules(handle, info)
             module = project_layer.find_module_in(handle, info, path, module_name, modules)
             if project_layer.is_document_module(module.kind):
@@ -723,7 +723,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         require_writable(settings, "xlide_delete_module")
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             module = project_layer.find_module_in(handle, info, path, module_name)
             if project_layer.is_document_module(module.kind):
                 raise ToolError(

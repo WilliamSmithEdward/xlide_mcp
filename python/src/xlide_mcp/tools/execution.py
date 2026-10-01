@@ -222,7 +222,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         info = require_readable(path)
         deadline = clamp_timeout(timeout or None, settings)
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             modules = project_layer.read_modules(handle, info)
         wanted = module_name.strip().casefold()
         candidates = [

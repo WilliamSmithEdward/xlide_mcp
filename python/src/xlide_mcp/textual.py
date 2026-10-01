@@ -26,6 +26,7 @@ import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
+from .config import Settings
 from .hosts import HostInfo, container, host_info
 
 # Said in the rendered text and in every tool result built from it, because a
@@ -54,7 +55,7 @@ class Section:
         return f"' {RULE} {self.kind} {self.name} {RULE}"
 
 
-def sections(path: Path, info: HostInfo | None = None) -> list[Section]:
+def sections(path: Path, info: HostInfo | None = None, *, settings: Settings) -> list[Section]:
     """Every piece of code in the file, in an order that does not move.
 
     Ordering is by kind then name, folded for case, so that two revisions line up
@@ -63,12 +64,12 @@ def sections(path: Path, info: HostInfo | None = None) -> list[Section]:
     """
     resolved = info or host_info(path)
     found: list[Section] = []
-    found.extend(_modules(path, resolved))
+    found.extend(_modules(path, resolved, settings))
     found.extend(_queries(path, resolved))
     return sorted(found, key=lambda s: (s.kind, s.name.casefold()))
 
 
-def render(path: Path, info: HostInfo | None = None) -> str:
+def render(path: Path, info: HostInfo | None = None, *, settings: Settings) -> str:
     """The file as one text document, for a diff to work on.
 
     Never raises for a file it cannot read. This runs as a git textconv driver,
@@ -80,7 +81,7 @@ def render(path: Path, info: HostInfo | None = None) -> str:
     except Exception:
         return _opaque(path, "not an Office file this server reads")
     try:
-        found = sections(path, resolved)
+        found = sections(path, resolved, settings=settings)
     except Exception as exc:
         return _opaque(path, f"could not be read: {exc}")
 
@@ -102,12 +103,12 @@ def render(path: Path, info: HostInfo | None = None) -> str:
 # ------------------------------------------------------------------ the parts
 
 
-def _modules(path: Path, info: HostInfo) -> list[Section]:
+def _modules(path: Path, info: HostInfo, settings: Settings) -> list[Section]:
     if not info.readable:
         return []
     from . import project as project_layer
 
-    with container(path, info) as handle:
+    with container(path, info, settings=settings) as handle:
         return [
             Section(name=module.name, kind="module", source=module.body)
             for module in project_layer.read_modules(handle, info)

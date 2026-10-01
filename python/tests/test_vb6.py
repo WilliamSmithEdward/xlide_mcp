@@ -16,6 +16,8 @@ import pytest
 from conftest import ToolFailure
 from tests_vb6_sources import VB6_FORM, VB6_HELPERS, VB6_MANIFEST
 
+from xlide_mcp import Settings
+
 
 @pytest.fixture
 def vb6_project(workspace: Path) -> Path:
@@ -240,6 +242,119 @@ def test_a_module_path_no_file_can_have_is_missing(tmp_path: Path) -> None:
 
     manifest = tmp_path / "Bad.vbp"
     manifest.write_bytes(b'Type=Exe\r\nModule=Helpers; Help\x00ers.bas\r\nName="Bad"\r\n')
-    project = Vb6Project(manifest)
+    project = Vb6Project(manifest, settings=Settings(roots=(tmp_path.resolve(),)))
     assert project.module_names() == []
     assert len(project.validate()) == 1
+
+
+# ------------------------------------------------- module files and the roots
+#
+# A .vbp is input this server does not control, so the module files it names are
+# held to the workspace roots like any path a caller sends. A project naming one
+# outside them is refused, for reading and so for writing: the module is never
+# opened, and nothing is written back to it.
+
+
+def _manifest(folder: Path, module_line: str) -> Path:
+    manifest = folder / "Shared.vbp"
+    manifest.write_text(
+        f'Type=Exe\r\n{module_line}\r\nName="Shared"\r\n', encoding="cp1252", newline=""
+    )
+    return manifest
+
+
+def _module(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(VB6_HELPERS, encoding="cp1252", newline="")
+    return path
+
+
+@pytest.fixture
+def elsewhere(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A folder outside the workspace root, as a sibling project's would be."""
+    return tmp_path_factory.mktemp("elsewhere")
+
+
+def test_a_module_in_a_subfolder_of_the_root_is_read(
+    call: Callable[..., Any], workspace: Path
+) -> None:
+    _module(workspace / "shared" / "Helpers.bas")
+    manifest = _manifest(workspace, "Module=Helpers; shared\\Helpers.bas")
+    info = call("xlide_project_info", file_path=str(manifest))
+    assert [module["name"] for module in info["modules"]] == ["Helpers"]
+
+
+def test_an_absolute_module_path_outside_the_roots_is_refused(
+    call: Callable[..., Any], workspace: Path, elsewhere: Path
+) -> None:
+    outside = _module(elsewhere / "Helpers.bas")
+    manifest = _manifest(workspace, f"Module=Helpers; {outside.resolve()}")
+    for tool, arguments in (
+        ("xlide_project_info", {}),
+        ("xlide_read_module", {"module_name": "Helpers"}),
+    ):
+        with pytest.raises(ToolFailure) as refused:
+            call(tool, file_path=str(manifest), **arguments)
+        assert "outside this server's workspace" in refused.value.message
+        assert "--root" in refused.value.message
+
+
+def test_a_dotdot_path_out_of_the_root_is_refused(
+    call: Callable[..., Any], workspace: Path
+) -> None:
+    project_dir = workspace / "project"
+    project_dir.mkdir()
+    _module(workspace.parent / f"{workspace.name}-sibling" / "Helpers.bas")
+    escape = f"..\\..\\{workspace.name}-sibling\\Helpers.bas"
+    manifest = _manifest(project_dir, f"Module=Helpers; {escape}")
+    with pytest.raises(ToolFailure) as refused:
+        call("xlide_project_info", file_path=str(manifest))
+    assert "Helpers.bas" in refused.value.message
+
+
+def test_a_write_never_reaches_a_module_outside_the_roots(
+    call: Callable[..., Any], workspace: Path, elsewhere: Path
+) -> None:
+    outside = _module(elsewhere / "Helpers.bas")
+    before = outside.read_bytes()
+    manifest = _manifest(workspace, f"Module=Helpers; {outside.resolve()}")
+    with pytest.raises(ToolFailure):
+        call(
+            "xlide_write_module",
+            file_path=str(manifest),
+            module_name="Helpers",
+            source="Option Explicit\r\n",
+        )
+    assert outside.read_bytes() == before
+
+
+def test_a_symlink_inside_the_root_does_not_carry_a_module_out(
+    call: Callable[..., Any], workspace: Path, elsewhere: Path
+) -> None:
+    outside = _module(elsewhere / "Helpers.bas")
+    link = workspace / "Helpers.bas"
+    try:
+        link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("this machine cannot create a symlink without privileges")
+    manifest = _manifest(workspace, "Module=Helpers; Helpers.bas")
+    with pytest.raises(ToolFailure) as refused:
+        call("xlide_project_info", file_path=str(manifest))
+    assert "outside this server's workspace" in refused.value.message
+
+
+def test_allow_outside_roots_lets_a_shared_module_through(
+    workspace: Path, elsewhere: Path
+) -> None:
+    from xlide_mcp.vb6 import Vb6Project
+
+    outside = _module(elsewhere / "Helpers.bas")
+    manifest = _manifest(workspace, f"Module=Helpers; {outside.resolve()}")
+    roots = (workspace.resolve(),)
+    with pytest.raises(Exception, match="outside this server's workspace"):
+        Vb6Project(manifest, settings=Settings(roots=roots))
+    project = Vb6Project(manifest, settings=Settings(roots=roots, allow_outside_roots=True))
+    assert project.module_names() == ["Helpers"]
+    # Adding the module's folder as a root is the ordinary way to grant it.
+    project = Vb6Project(manifest, settings=Settings(roots=(*roots, elsewhere.resolve())))
+    assert project.module_names() == ["Helpers"]

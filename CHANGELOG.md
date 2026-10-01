@@ -5,9 +5,16 @@ Notable changes to `xlide-mcp`. The version lives in
 
 ## [Unreleased]
 
-The tools and their answers are unchanged: 65 tools and 142 conformance cases.
+The tools are unchanged; one answer is new: 65 tools and 143 conformance cases.
 
 ### Fixed
+
+- A `.vbp` could name module files outside the workspace roots, such as
+  `..\..\x.bas`, an absolute path or a symlink out of a root, and the server
+  read them and wrote module changes back to them. A project naming one is now
+  refused, naming the file and how to grant its folder with `--root`, so
+  neither a read nor a write reaches outside the workspace. The git diff
+  driver, which runs outside the server, still reads them.
 
 - A drawing part holding a character reference past U+10FFFF, such as
   `&#x110000;` or one with thirty digits, raised `ValueError` or

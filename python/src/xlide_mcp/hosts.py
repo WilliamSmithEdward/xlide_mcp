@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from .config import Settings
 from .errors import ToolError
 
 HostName = Literal["excel", "word", "powerpoint", "access", "vb6"]
@@ -249,13 +250,18 @@ def container_class(info: HostInfo) -> Any:
     }[info.host]
 
 
-def open_container(path: Path, info: HostInfo | None = None) -> Any:
-    """Open a file's VBA project. The caller closes it, or uses `container`."""
+def open_container(path: Path, info: HostInfo | None = None, *, settings: Settings) -> Any:
+    """Open a file's VBA project. The caller closes it, or uses `container`.
+
+    `settings` is required, not defaulted: a VB6 project opens the module files its
+    manifest names, and those are held to the workspace roots.
+    """
     resolved = info or require_readable(path)
     import pyopenvba
 
     try:
-        return container_class(resolved)(path)
+        opener = container_class(resolved)
+        return opener(path, settings=settings) if resolved.host == "vb6" else opener(path)
     except pyopenvba.PyOpenVBAError as exc:
         raise ToolError(f"{path.name}: {exc}") from exc
     except PermissionError as exc:
@@ -274,13 +280,14 @@ class container:
     needs both and looking it up twice is how the two drift apart.
     """
 
-    def __init__(self, path: Path, info: HostInfo | None = None) -> None:
+    def __init__(self, path: Path, info: HostInfo | None = None, *, settings: Settings) -> None:
         self.path = path
         self.info = info or require_readable(path)
+        self.settings = settings
         self._handle: Any = None
 
     def __enter__(self) -> Any:
-        handle = open_container(self.path, self.info)
+        handle = open_container(self.path, self.info, settings=self.settings)
         self._handle = handle
         # Each pyOpenVBA class is a context manager, and they do not all release
         # the same way: AccessDatabase has no close() at all, so calling one

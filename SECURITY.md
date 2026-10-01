@@ -24,7 +24,9 @@ file that escapes a workspace root, changes an unintended file, bypasses a
 guarded write, corrupts a project, or makes a read execute code is in
 scope. So is a path that escapes its configured root through a symlink, or
 a request that touches an Office process the server did not create unless
-the caller explicitly chose one of the office tools.
+the caller explicitly chose one of the office tools. The module files a VB6
+`.vbp` names are held to the roots too, after symlinks resolve: a project
+naming one outside them is refused rather than read or written.
 
 ### Running macros
 

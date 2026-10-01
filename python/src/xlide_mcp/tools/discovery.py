@@ -129,7 +129,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         if not info.readable:
             result["reason"] = info.reason
         else:
-            with project_layer.open_project(path, info) as handle:
+            with project_layer.open_project(path, info, settings=settings) as handle:
                 modules = project_layer.read_modules(handle, info)
                 status = project_layer.project_status(handle, info)
                 result["has_vba_project"] = status.has_project
@@ -185,7 +185,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             has_project = project_layer.has_project(handle, info)
             validator = getattr(handle, "validate", None)
             if has_project and not callable(validator):
@@ -252,7 +252,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         require_writable(settings, "xlide_create_project")
         path = resolve_path(file_path, settings, must_exist=False)
         if path.exists():
-            return _add_project(path)
+            return _add_project(path, settings=settings)
         extension = path.suffix.lower()
         if extension not in CREATABLE:
             hint = NOT_READABLE.get(extension, "")
@@ -329,7 +329,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         return report
 
 
-def _add_project(path: Path) -> dict[str, Any]:
+def _add_project(path: Path, *, settings: Settings) -> dict[str, Any]:
     """Give an existing file with no VBA project the one its application makes.
 
     Refused for everything else, with the reason: a file that has a project keeps
@@ -347,7 +347,7 @@ def _add_project(path: Path) -> dict[str, Any]:
             f"{path} already exists. This tool never overwrites a file; pick another path, "
             "or work on the existing one."
         )
-    with project_layer.open_project(path, info) as handle:
+    with project_layer.open_project(path, info, settings=settings) as handle:
         if project_layer.has_project(handle, info):
             raise ToolError(
                 f"{path} already exists, with a VBA project. This tool never overwrites a "
@@ -364,7 +364,7 @@ def _add_project(path: Path) -> dict[str, Any]:
         project_layer.ensure_project(handle, info, path)
         modules = [m.name for m in project_layer.read_modules(handle, info)]
         project_layer.save(handle, info, path=path)
-    with project_layer.open_project(path, info) as handle:
+    with project_layer.open_project(path, info, settings=settings) as handle:
         kept = project_layer.has_project(handle, info)
     result: dict[str, Any] = {
         "path": str(path),

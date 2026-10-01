@@ -185,6 +185,27 @@ FIXTURES: dict[str, Any] = {
         },
         "encoding": "The machine's ANSI code page, which is what VB6 writes.",
     },
+    "vb6_project_reaching_outside": {
+        "kind": "visual-basic-6-project",
+        "file_name": "Shared.vbp",
+        "why": (
+            "A manifest is input the server does not control, and the module files it names "
+            "are paths like any other: this one names a module two folders above the "
+            "workspace. Whether that file exists does not matter, because the boundary is "
+            "checked first."
+        ),
+        "files": {
+            "Shared.vbp": CRLF.join(
+                [
+                    "Type=Exe",
+                    "Module=Helpers; ..\\..\\Helpers.bas",
+                    'Name="Shared"',
+                    "",
+                ]
+            ),
+        },
+        "encoding": "The machine's ANSI code page, which is what VB6 writes.",
+    },
     "access_designs": {
         "kind": "access-database",
         "file_name": "Designs.accdb",
@@ -2728,6 +2749,21 @@ def cases() -> list[dict[str, Any]]:
                 step(
                     "xlide_list_modules",
                     {"file_path": "${fixture}/../../elsewhere.xlsm"},
+                    error_contains="outside this server's workspace",
+                )
+            ],
+        )
+    )
+    out.append(
+        case(
+            "workspace.refuses-a-vb6-module-outside-the-roots",
+            "The same boundary, reached through a file: a .vbp naming a module outside the "
+            "roots is refused, so neither a read nor the write after it reaches that file.",
+            "vb6_project_reaching_outside",
+            [
+                step(
+                    "xlide_project_info",
+                    {"file_path": "${fixture}"},
                     error_contains="outside this server's workspace",
                 )
             ],

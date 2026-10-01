@@ -95,9 +95,9 @@ def register(server: MCPServer, settings: Settings) -> None:
         relative = _relative_to_repository(path, repository)
         blob = _blob_at(repository, revision, relative, path.name)
 
-        current = _by_key(sections(path, info))
+        current = _by_key(sections(path, info, settings=settings))
         with _temporary_copy(blob, path.suffix) as older_path:
-            previous = _by_key(sections(older_path, info))
+            previous = _by_key(sections(older_path, info, settings=settings))
 
         wanted = section.strip().casefold()
         entries: list[dict[str, Any]] = []

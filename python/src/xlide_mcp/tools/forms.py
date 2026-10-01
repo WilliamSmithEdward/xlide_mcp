@@ -62,7 +62,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             orphans = _orphaned(handle, info)
             listed = []
             for form in _forms(handle, info.title):
@@ -139,7 +139,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             form = _find_form(handle, form_name, info.title)
             form_display = form.name
             design_kind = _design_kind(form)
@@ -236,7 +236,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         if wanted_design == "report" and info.host != "access":
             raise ToolError(f"Reports exist in Access databases; {path.name} is {info.title}.")
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             # A form is a component like a module, so the first one in a file saved
             # before its first macro gives the file its project, as a module does.
             project_created = wanted == "create" and project_layer.ensure_project(
@@ -355,7 +355,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         if not control_name.strip():
             raise ToolError("control_name is required.")
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             form = _find_form(handle, form_name, info.title)
             form_display = form.name
             detail: dict[str, Any] = {}

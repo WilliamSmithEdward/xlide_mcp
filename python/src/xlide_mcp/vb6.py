@@ -26,7 +26,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .config import Settings
 from .errors import ToolError
+from .paths import inside_workspace
 
 # Manifest lines that name a module, and what kind each one is. A form and a
 # control give only a file name; the others give `Name; File`.
@@ -89,6 +91,8 @@ class _Manifest:
     objects: list[str] = field(default_factory=list)
     missing: list[str] = field(default_factory=list)
     """Files the manifest names and the folder does not hold."""
+    outside: list[tuple[str, Path]] = field(default_factory=list)
+    """Files the manifest names outside the workspace roots, as written and resolved."""
 
 
 class Vb6Project:
@@ -99,9 +103,18 @@ class Vb6Project:
     on a VB6 project without knowing there is one.
     """
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, settings: Settings) -> None:
         self.path = path
-        self._manifest = _parse(path)
+        self._manifest = _parse(path, settings)
+        if self._manifest.outside:
+            # Refused outright rather than read without them: a project missing
+            # modules would give the analysis, and the agent, a wrong picture.
+            listed = ", ".join(f"{name} ({resolved})" for name, resolved in self._manifest.outside)
+            raise ToolError(
+                f"{path.name} names module files outside this server's workspace: {listed}. "
+                "A project that shares modules from another folder needs that folder as a "
+                "workspace root as well: ask the user to start the server with --root for it."
+            )
 
     # -- the container surface --------------------------------------------
 
@@ -294,7 +307,7 @@ class Vb6Project:
 # ------------------------------------------------------------------ parsing
 
 
-def _parse(path: Path) -> _Manifest:
+def _parse(path: Path, settings: Settings) -> _Manifest:
     text = _read_text(path)
     manifest = _Manifest()
     for line in text.splitlines():
@@ -310,19 +323,24 @@ def _parse(path: Path) -> _Manifest:
         elif key == "Object":
             manifest.objects.append(value)
         elif key in _MODULE_LINES:
-            component = _component(path, key, value, manifest)
+            component = _component(path, key, value, manifest, settings)
             if component is not None:
                 manifest.components.append(component)
     return manifest
 
 
 def _component(
-    project: Path, key: str, value: str, manifest: _Manifest
+    project: Path, key: str, value: str, manifest: _Manifest, settings: Settings
 ) -> Vb6Component | None:
     """One manifest module line, read from its file.
 
     `Module=Name; File.bas` names the module; `Form=File.frm` does not, and the
     form's real name is an attribute inside it.
+
+    The file is held to the workspace roots like any path a caller sends: the
+    manifest is input this server does not control, so `..\\..\\x.bas`, an
+    absolute path or a symlink must not reach a file outside them, for reading
+    or for the write that follows. It is checked after symlinks resolve.
     """
     declared, _, file_part = value.partition(";")
     file_name = (file_part or declared).strip()
@@ -330,10 +348,17 @@ def _component(
         return None
     try:
         file_path = (project.parent / file_name.replace("\\", "/")).resolve()
-        present = file_path.is_file()
     except (OSError, ValueError):
         # A name no path can hold (a NUL byte, one too long): as missing as
         # a file the folder does not have.
+        manifest.missing.append(file_name)
+        return None
+    if not inside_workspace(file_path, settings):
+        manifest.outside.append((file_name, file_path))
+        return None
+    try:
+        present = file_path.is_file()
+    except (OSError, ValueError):
         present = False
     if not present:
         manifest.missing.append(file_name)
