@@ -150,6 +150,10 @@ def textconv(raw: str) -> int:
     from .hosts import sniff_extension
     from .textual import render
 
+    # Outside the server, so outside its roots: a VB6 project's module files are
+    # read wherever its manifest puts them, as the user's own git would.
+    unbounded = Settings(allow_outside_roots=True)
+
     path = Path(raw)
     if not path.exists():
         print(f"' xlide-mcp: no such file: {raw}")
@@ -168,10 +172,10 @@ def textconv(raw: str) -> int:
             with tempfile.TemporaryDirectory() as directory:
                 named = Path(directory) / f"blob{sniffed}"
                 shutil.copyfile(path, named)
-                sys.stdout.write(render(named))
+                sys.stdout.write(render(named, settings=unbounded))
             return 0
 
-    sys.stdout.write(render(path, info))
+    sys.stdout.write(render(path, info, settings=unbounded))
     return 0
 
 

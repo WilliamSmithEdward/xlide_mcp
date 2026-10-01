@@ -86,7 +86,7 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         from pyvbaanalysis import analyze_project
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             modules = project_layer.read_modules(handle, info)
             has_project = project_layer.has_project(handle, info)
             referenced = project_layer.referenced_hosts(handle, info)
@@ -231,7 +231,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             path = resolve_path(file_path, settings)
             info = require_readable(path)
             resolved_host = _analysis_host(info)
-            with project_layer.open_project(path, info) as handle:
+            with project_layer.open_project(path, info, settings=settings) as handle:
                 modules = project_layer.read_modules(handle, info)
                 referenced = project_layer.referenced_hosts(handle, info)
             inputs.extend(

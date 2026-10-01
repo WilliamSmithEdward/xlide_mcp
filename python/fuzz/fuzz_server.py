@@ -31,7 +31,7 @@ import atheris
 with atheris.instrument_imports():
     from mcp.server.mcpserver.exceptions import ToolError
 
-    from xlide_mcp import vb6, xlsx
+    from xlide_mcp import Settings, vb6, xlsx
 
 SCRATCH = Path(tempfile.mkdtemp(prefix="xlide-fuzz-"))
 (SCRATCH / "Module1.bas").write_bytes(
@@ -66,7 +66,9 @@ def fuzz_vbp(data):
     manifest = SCRATCH / "Project1.vbp"
     manifest.write_bytes(data)
     try:
-        project = vb6.Vb6Project(manifest)
+        # Rooted at the scratch folder, so a module line that escapes it is
+        # refused with ToolError, which this target accepts.
+        project = vb6.Vb6Project(manifest, settings=Settings(roots=(SCRATCH.resolve(),)))
         project.module_names()
         _ = project.references
         _ = project.name

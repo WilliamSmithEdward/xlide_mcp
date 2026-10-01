@@ -83,6 +83,15 @@
       },
       "encoding": "The machine's ANSI code page, which is what VB6 writes."
     },
+    "vb6_project_reaching_outside": {
+      "kind": "visual-basic-6-project",
+      "file_name": "Shared.vbp",
+      "why": "A manifest is input the server does not control, and the module files it names are paths like any other: this one names a module two folders above the workspace. Whether that file exists does not matter, because the boundary is checked first.",
+      "files": {
+        "Shared.vbp": "Type=Exe\r\nModule=Helpers; ..\\..\\Helpers.bas\r\nName=\"Shared\"\r\n"
+      },
+      "encoding": "The machine's ANSI code page, which is what VB6 writes."
+    },
     "access_designs": {
       "kind": "access-database",
       "file_name": "Designs.accdb",
@@ -221,7 +230,7 @@
       }
     }
   },
-  "case_count": 142,
+  "case_count": 143,
   "cases": [
     {
       "id": "project-info.reports-the-write-guards",
@@ -4640,6 +4649,21 @@
         }
       ],
       "fixture": "workbook"
+    },
+    {
+      "id": "workspace.refuses-a-vb6-module-outside-the-roots",
+      "why": "The same boundary, reached through a file: a .vbp naming a module outside the roots is refused, so neither a read nor the write after it reaches that file.",
+      "requires": "files",
+      "steps": [
+        {
+          "tool": "xlide_project_info",
+          "arguments": {
+            "file_path": "${fixture}"
+          },
+          "error_contains": "outside this server's workspace"
+        }
+      ],
+      "fixture": "vb6_project_reaching_outside"
     },
     {
       "id": "ranges.error-checks-find-numbers-stored-as-text",

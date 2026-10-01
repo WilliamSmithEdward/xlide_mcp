@@ -262,7 +262,9 @@ def test_an_orphaned_design_is_reported_rather_than_counted(
         def vba_project(self) -> Project:
             return Project()
 
-    monkeypatch.setattr(project_layer, "open_project", lambda *_args: nullcontext(DamagedFile()))
+    monkeypatch.setattr(
+        project_layer, "open_project", lambda *_args, **_kwargs: nullcontext(DamagedFile())
+    )
     listed = call("xlide_list_forms", file_path=str(workbook))
     orphans = [entry["name"] for entry in listed["forms"] if entry.get("orphaned")]
     assert orphans == ["Wizard"]

@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from . import locks
+from .config import Settings
 from .errors import ToolError
 from .hosts import HostInfo, container, require_readable
 from .tokens import content_token
@@ -480,9 +481,9 @@ def referenced_hosts(handle: Any, info: HostInfo) -> list[str] | None:
     return referenced_host_tokens(info.host, libids)
 
 
-def open_project(path: Path, info: HostInfo | None = None) -> container:
-    """`with open_project(path) as book:`"""
-    return container(path, info or require_readable(path))
+def open_project(path: Path, info: HostInfo | None = None, *, settings: Settings) -> container:
+    """`with open_project(path, settings=settings) as book:`"""
+    return container(path, info or require_readable(path), settings=settings)
 
 
 def _components(handle: Any) -> Iterator[Any]:

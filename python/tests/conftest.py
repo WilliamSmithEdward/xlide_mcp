@@ -333,6 +333,18 @@ def vb6_project(workspace: Path) -> Path:
 
 
 @pytest.fixture
+def vb6_project_reaching_outside(workspace: Path) -> Path:
+    """A .vbp naming a module two folders above the workspace, outside the roots."""
+    project = workspace / "Shared.vbp"
+    project.write_text(
+        'Type=Exe\r\nModule=Helpers; ..\\..\\Helpers.bas\r\nName="Shared"\r\n',
+        encoding="cp1252",
+        newline="",
+    )
+    return project
+
+
+@pytest.fixture
 def workbook_with_a_form(workspace: Path) -> Path:
     """A workbook holding a UserForm: a designer storage and a module of one name."""
     import pyopenvba

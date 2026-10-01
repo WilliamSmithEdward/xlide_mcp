@@ -147,7 +147,9 @@ def test_structural_problems_can_be_read_in_pages(
         def validate(self) -> list[str]:
             return [f"problem {index}" for index in range(305)]
 
-    monkeypatch.setattr(project_layer, "open_project", lambda *_args: nullcontext(DamagedProject()))
+    monkeypatch.setattr(
+        project_layer, "open_project", lambda *_args, **_kwargs: nullcontext(DamagedProject())
+    )
     monkeypatch.setattr(project_layer, "has_project", lambda *_args: True)
 
     first = call("xlide_validate_project", file_path=str(workbook), max_results=2)
@@ -173,7 +175,9 @@ def test_structural_validation_failure_is_not_called_unsupported(
         def validate(self) -> list[str]:
             raise AttributeError("directory record is missing")
 
-    monkeypatch.setattr(project_layer, "open_project", lambda *_args: nullcontext(DamagedProject()))
+    monkeypatch.setattr(
+        project_layer, "open_project", lambda *_args, **_kwargs: nullcontext(DamagedProject())
+    )
     monkeypatch.setattr(project_layer, "has_project", lambda *_args: True)
 
     with pytest.raises(ToolFailure) as refusal:

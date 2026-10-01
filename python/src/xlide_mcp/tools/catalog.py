@@ -66,7 +66,7 @@ def register(server: MCPServer, settings: Settings) -> None:
     ) -> dict[str, Any]:
         path = resolve_path(file_path, settings)
         info = require_readable(path)
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             # Access keeps its references in the database and the other three keep
             # theirs in the dir stream, but both record the same libid string, so
             # one reader serves.
@@ -161,7 +161,7 @@ def register(server: MCPServer, settings: Settings) -> None:
 
         import pyopenvba
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             if not project_layer.has_project(handle, info):
                 raise ToolError(
                     project_layer.no_project_note(path, info)
@@ -297,7 +297,7 @@ def register(server: MCPServer, settings: Settings) -> None:
         result: dict[str, Any] = {
             "path": str(path), "offset": offset, "counts": {}, "next_offsets": {},
         }
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             if wanted in {"tables", "all"}:
                 shown, count, next_offset = _tables(
                     handle, include_system, offset, max_results
@@ -346,7 +346,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 f"{path.name} is a {info.title} file. Saved queries require an "
                 "Access database."
             )
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             try:
                 saved = list(handle.queries())
             except Exception as exc:

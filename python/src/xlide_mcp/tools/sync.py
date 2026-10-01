@@ -84,7 +84,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             )
         )
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             modules = project_layer.read_modules(handle, info)
 
         plan: list[dict[str, Any]] = []
@@ -215,7 +215,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 "or point source_folder at the folder the files are in."
             )
 
-        with project_layer.open_project(path, info) as handle:
+        with project_layer.open_project(path, info, settings=settings) as handle:
             # Made before the plan, in memory, so a file saved before its first
             # macro is planned against the document modules its project will hold.
             # A preview never saves, so the project exists only if this applies.
@@ -299,7 +299,7 @@ def register(server: MCPServer, settings: Settings) -> None:
             result["warnings"] = save_warnings
         if project_created:
             result["vba_project_created"] = True
-        notice = _tell_xlide(path, info, changing, by_name)
+        notice = _tell_xlide(path, info, changing, by_name, settings=settings)
         if notice:
             result["xlide_vscode"] = notice
         return result
@@ -310,6 +310,8 @@ def _tell_xlide(
     info: Any,
     changing: list[tuple[str, str, Path, str]],
     before: dict[str, project_layer.ModuleView],
+    *,
+    settings: Settings,
 ) -> dict[str, Any] | None:
     """One review per module the import changed, when XLIDE is running to show it.
 
@@ -318,7 +320,7 @@ def _tell_xlide(
     """
     if not changing or not xlide_vscode.windows():
         return None
-    with project_layer.open_project(path, info) as handle:
+    with project_layer.open_project(path, info, settings=settings) as handle:
         after = {m.name.casefold(): m for m in project_layer.read_modules(handle, info)}
     notice: dict[str, Any] | None = None
     for _action, name, _item, _text in changing:

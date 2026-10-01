@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from xlide_mcp import vb6, xlsx
+from xlide_mcp import Settings, vb6, xlsx
 
 CORPUS = Path(__file__).parent / "fuzz_corpus"
 SEEDS = [
@@ -52,7 +52,7 @@ def test_a_seed_is_read_or_refused_with_a_tool_error(
         manifest = tmp_path / "Project1.vbp"
         manifest.write_bytes(path.read_bytes())
         try:
-            project = vb6.Vb6Project(manifest)
+            project = vb6.Vb6Project(manifest, settings=Settings(roots=(tmp_path.resolve(),)))
             project.module_names()
             project.validate()
         except ToolError:

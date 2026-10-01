@@ -17,8 +17,12 @@ from typing import Any
 
 import pytest
 
+from xlide_mcp import Settings
 from xlide_mcp.hosts import sniff_extension
 from xlide_mcp.textual import render, sections
+
+# The git driver runs outside the server, so outside its roots (see __main__.textconv).
+UNBOUNDED = Settings(allow_outside_roots=True)
 
 
 def run_textconv(path: Path) -> subprocess.CompletedProcess:
@@ -35,7 +39,7 @@ def run_textconv(path: Path) -> subprocess.CompletedProcess:
 
 
 def test_a_workbook_renders_its_modules(workbook: Path) -> None:
-    text = render(workbook)
+    text = render(workbook, settings=UNBOUNDED)
     assert "' ===== module Helpers =====" in text
     assert "AddNums" in text
 
@@ -50,7 +54,7 @@ def test_power_query_renders_beside_the_vba(
         query_name="Orders",
         formula="let Source = {1..10} in Source",
     )
-    text = render(workbook)
+    text = render(workbook, settings=UNBOUNDED)
     assert "' ===== module Helpers =====" in text
     assert "' ===== query Orders =====" in text
     assert "let Source = {1..10} in Source" in text
@@ -59,11 +63,12 @@ def test_power_query_renders_beside_the_vba(
 def test_the_rendered_text_says_what_it_leaves_out(workbook: Path) -> None:
     """Without this line a reader takes an empty diff for an unchanged workbook,
     when every number on every sheet may have moved."""
-    assert "cell values are not compared" in render(workbook).splitlines()[0].casefold()
+    first_line = render(workbook, settings=UNBOUNDED).splitlines()[0]
+    assert "cell values are not compared" in first_line.casefold()
 
 
 def test_sheets_are_listed_so_a_structural_change_shows(workbook: Path) -> None:
-    text = render(workbook)
+    text = render(workbook, settings=UNBOUNDED)
     assert "' ===== sheets =====" in text
     assert "Sheet1" in text
 
@@ -80,7 +85,7 @@ def test_sections_come_back_in_an_order_that_does_not_move(
             module_name=name,
             source=f"Option Explicit\r\n\r\nPublic Sub {name}_()\r\nEnd Sub\r\n",
         )
-    names = [s.name for s in sections(workbook) if s.kind == "module"]
+    names = [s.name for s in sections(workbook, settings=UNBOUNDED) if s.kind == "module"]
     assert names == sorted(names, key=str.casefold)
 
 
@@ -89,9 +94,9 @@ def test_a_line_ending_change_is_not_a_change(
 ) -> None:
     """VBA is stored CRLF and edited LF by half the tools that touch it. A
     renderer that passed that through would make every diff a whole-file rewrite."""
-    before = render(workbook)
+    before = render(workbook, settings=UNBOUNDED)
     unchanged_but_for_endings = next(
-        s.source for s in sections(workbook) if s.name == "Helpers"
+        s.source for s in sections(workbook, settings=UNBOUNDED) if s.name == "Helpers"
     ).replace("\r\n", "\n")
 
     call(
@@ -100,7 +105,7 @@ def test_a_line_ending_change_is_not_a_change(
         module_name="Helpers",
         source=unchanged_but_for_endings,
     )
-    assert render(workbook) == before
+    assert render(workbook, settings=UNBOUNDED) == before
 
 
 # ------------------------------------------------------------------ the driver

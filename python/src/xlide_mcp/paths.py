@@ -88,5 +88,15 @@ def display(path: Path, settings: Settings) -> str:
     return str(path)
 
 
+def inside_workspace(path: Path, settings: Settings) -> bool:
+    """Whether a path this server reached on its own may be touched.
+
+    `resolve_path`'s rule for a path that did not come from the caller: a VB6
+    module file the .vbp names. `path` must already be resolved, symlinks
+    included, so a link cannot carry it out of the roots.
+    """
+    return settings.allow_outside_roots or _inside_any(path, settings.effective_roots())
+
+
 def _inside_any(path: Path, roots: tuple[Path, ...]) -> bool:
     return any(path == root or root in path.parents for root in roots)
