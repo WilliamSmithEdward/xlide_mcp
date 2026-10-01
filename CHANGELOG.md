@@ -3,9 +3,10 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
-## [Unreleased]
+## [1.2.3]
 
-The tools are unchanged; one answer is new: 65 tools and 143 conformance cases.
+A security patch. The tools are unchanged; one answer is new: 65 tools and
+143 conformance cases.
 
 ### Fixed
 
@@ -375,6 +376,8 @@ cells and document surface inside Office files, and for Visual Basic 6 projects.
 - The document surface is Excel only. Word, PowerPoint and Access reach their
   VBA, forms and catalogs, and their document surfaces follow pyOfficeEditor.
 
+[1.2.3]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.3
+[1.2.2]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.2
 [1.2.1]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.1
 [1.2.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.2.0
 [1.1.0]: https://github.com/WilliamSmithEdward/xlide_mcp/releases/tag/v1.1.0
