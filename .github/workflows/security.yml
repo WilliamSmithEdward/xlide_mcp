@@ -1,11 +1,13 @@
 name: Security
 
 # CodeQL and Semgrep over the server and the workflows that build and
-# publish it, and zizmor over the workflows. scripts/security/security_report.py
-# holds every CodeQL and Semgrep finding, and every warning they raise about
-# their scans, to .github/security/accepted.toml, and fails on anything that
-# file does not account for. zizmor keeps its own exceptions (see its job). The publish workflow calls this one, so a release waits on
-# it and carries the report it writes.
+# publish it, pip-audit over its runtime dependencies, and zizmor over the
+# workflows. scripts/security/security_report.py holds every CodeQL and
+# Semgrep finding, and every warning they raise about their scans, to
+# .github/security/accepted.toml, and fails on anything that file does not
+# account for. zizmor keeps its own exceptions (see its job). The publish
+# workflow calls this one, so a release waits on it and carries the report
+# it writes.
 
 on:
   push:
@@ -106,6 +108,46 @@ jobs:
           path: semgrep.sarif
           if-no-files-found: error
 
+  # pip-audit over the runtime dependencies as a fresh install resolves them
+  # today: .github/requirements/runtime.txt, hash-locked and moved daily by
+  # Dependabot. pip-audit runs from its own venv, installed from
+  # .github/requirements/pip-audit.txt. Any known vulnerability fails the job.
+  dependencies:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      - name: Install pip-audit
+        run: |
+          python -m venv "$RUNNER_TEMP/audit"
+          "$RUNNER_TEMP/audit/bin/python" -m pip install --require-hashes -r .github/requirements/pip-audit.txt
+
+      - name: Audit the runtime dependencies (fails on any known vulnerability)
+        run: >
+          "$RUNNER_TEMP/audit/bin/pip-audit" --strict --require-hashes
+          -r .github/requirements/runtime.txt
+          --format json --output pip-audit.json --progress-spinner off
+
+      - name: Show the audit on the run
+        if: always()
+        run: >
+          "$RUNNER_TEMP/audit/bin/pip-audit" --strict --require-hashes
+          -r .github/requirements/runtime.txt --progress-spinner off || true
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: pip-audit
+          path: pip-audit.json
+
   # zizmor audits the workflows themselves: template injection, credential
   # persistence, over-broad permissions, dangerous triggers, and actions with
   # known advisories or impostor commits. Findings it should not raise are
@@ -197,7 +239,7 @@ jobs:
   security-passed:
     name: Security passed
     if: always()
-    needs: [codeql, semgrep, zizmor, report]
+    needs: [codeql, semgrep, dependencies, zizmor, report]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

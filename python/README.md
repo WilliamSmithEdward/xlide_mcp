@@ -310,9 +310,10 @@ An Access database that has never held code can have no VBA project.
 
 Report a vulnerability through [private vulnerability reporting](https://github.com/WilliamSmithEdward/xlide_mcp/security/advisories/new), not a public issue. The [security policy](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/SECURITY.md) says what to include and which versions receive fixes.
 
-CodeQL and Semgrep scan the server and release workflows, and ClamAV and
-YARA-X, with the YARA Forge rules, scan every tracked file, on every push, pull
-request, daily run and release. An unexpected finding, scan warning or missing
+CodeQL and Semgrep scan the server and release workflows, pip-audit checks the
+runtime dependencies, and ClamAV and YARA-X, with the YARA Forge rules, scan
+every tracked file and the built wheel and sdist, on every push, pull request,
+daily run and release. An unexpected finding, scan warning or missing
 scan stops a release. Each successful release carries its security report and
 the SARIF results as downloadable assets. Dependabot proposes dependency and
 workflow updates for review.

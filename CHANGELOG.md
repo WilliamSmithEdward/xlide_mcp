@@ -38,6 +38,12 @@ The tools and their answers are unchanged: 65 tools and 142 conformance cases.
 - The container image installs its dependencies from a hash-locked lock
   (`.github/requirements/image.txt`) and then the server with `--no-deps`, so
   every build of the image runs the same versions.
+- The Malware scan builds the wheel and sdist with the hash-locked build
+  tools, as a release builds them, and ClamAV and YARA-X scan them beside
+  the tracked files.
+- The Security workflow audits the runtime dependencies with pip-audit: any
+  known vulnerability fails it. The audit reads a hash-locked
+  `.github/requirements/runtime.txt` that Dependabot moves daily.
 
 ## [1.2.2]
 
