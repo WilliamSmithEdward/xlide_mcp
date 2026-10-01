@@ -66,16 +66,19 @@ Publish workflow before every release.
   finding does. Results go to the repository's code scanning.
 - **Workflows:** zizmor audits the GitHub Actions workflows; a finding fails
   Security.
-- **Dependencies:** there is no dependency audit job. The runtime
-  dependencies in `python/pyproject.toml` and the hash-locked tool files in
-  `.github/requirements` are covered by Dependabot alerts and security
-  updates.
+- **Dependencies:** pip-audit checks the runtime dependencies, `mcp`,
+  pyOpenVBA, pyOfficeEditor and pyvbaanalysis with everything they pull
+  in, as a fresh install resolves them today
+  (`.github/requirements/runtime.txt`, hash-locked and moved daily by
+  Dependabot). Any known vulnerability fails Security. The tools the
+  workflows install come from hash-locked files (see Pinning and updates).
 - **Malware:** ClamAV, with signatures freshclam fetches and verifies on
   every run, and YARA-X, with the YARA Forge rules pinned to a release and
-  its SHA-256, scan every tracked file. ClamAV also flags any Office file
-  that holds VBA and any encrypted file. YARA-X runs the full YARA Forge
-  pack. A failed signature update, a scanner error or a scan warning fails
-  Malware scan.
+  its SHA-256, scan every tracked file, and the wheel and sdist built from
+  it with the hash-locked build tools, as a release builds them. ClamAV
+  also flags any Office file that holds VBA and any encrypted file. YARA-X
+  runs the full YARA Forge pack. A failed signature update, a scanner error
+  or a scan warning fails Malware scan.
 - **Fuzzing:** Atheris fuzzes the text this server parses itself
   (`python/fuzz/fuzz_server.py`): the drawing layer's tag scanner and entity
   decoder, cell and range references, and the VB6 project manifest. A

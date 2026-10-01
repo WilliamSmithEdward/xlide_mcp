@@ -1,0 +1,14 @@
+# The runtime dependencies as a user's install resolves them today, for the
+# Security workflow's dependency audit. python/pyproject.toml asks for
+# mcp>=2.0, pyOpenVBA>=6.3.3,<7, pyOfficeEditor>=0.4.1,<0.5 and
+# pyvbaanalysis>=2.3.1,<3; this pins the release of each that PyPI serves
+# now, and Dependabot moves the pins daily (the owner's packages skip the
+# cooldown), so the audit follows what a fresh install gets. image.txt and
+# test.txt pin the versions the image and the conformance corpus run, which
+# can trail these by a release. Compiled for the oldest Python the package
+# supports:
+#   uv pip compile runtime.in --universal --generate-hashes --python-version 3.10 -o runtime.txt
+mcp==2.2.0
+pyopenvba==6.3.5
+pyofficeeditor==0.4.1
+pyvbaanalysis==2.3.1
