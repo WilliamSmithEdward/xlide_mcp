@@ -1,14 +1,15 @@
 # xlide-mcp
 
-[![xlide-excel-word-powerpoint-access-office-vba-mcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/WilliamSmithEdward/xlide_mcp/badges/card.svg)](https://glama.ai/mcp/servers/WilliamSmithEdward/xlide_mcp)
-
-[![Python Version](https://img.shields.io/pypi/pyversions/xlide-mcp.svg)](https://pypi.org/project/xlide-mcp/)
-[![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
-[![Security](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml)
-[![Malware scan](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml)
+[![PyPI version](https://img.shields.io/pypi/v/xlide-mcp)](https://pypi.org/project/xlide-mcp/)
+[![Python versions](https://img.shields.io/pypi/pyversions/xlide-mcp)](https://pypi.org/project/xlide-mcp/)
+[![Downloads](https://img.shields.io/pypi/dm/xlide-mcp)](https://pypistats.org/packages/xlide-mcp)
+[![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
+[![Security](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml)
+[![Malware scan](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml/badge.svg?branch=main)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/WilliamSmithEdward/xlide_mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/xlide_mcp)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
-[![Downloads](https://static.pepy.tech/badge/xlide-mcp/month)](https://pepy.tech/project/xlide-mcp)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
+
+[![xlide-excel-word-powerpoint-access-office-vba-mcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/WilliamSmithEdward/xlide_mcp/badges/card.svg)](https://glama.ai/mcp/servers/WilliamSmithEdward/xlide_mcp)
 
 **An MCP server for the inside of an Office file.** Read, write, analyze and
 test the VBA in Excel, Word, PowerPoint and Access, and edit the document around
