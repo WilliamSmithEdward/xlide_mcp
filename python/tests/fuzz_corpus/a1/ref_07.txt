@@ -1,0 +1,1 @@
+=_xlfn.CONCAT(A1,B1)

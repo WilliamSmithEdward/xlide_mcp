@@ -1,7 +1,8 @@
-# The image builds from python/ and nothing else. Everything here is either not
-# copied or actively unwanted in the build context.
+# The image builds from python/ and the hash-locked file of what it installs.
+# Everything here is either not copied or actively unwanted in the build context.
 .git
 .github
+!.github/requirements/image.txt
 contract
 docs
 *.md

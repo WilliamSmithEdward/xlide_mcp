@@ -328,8 +328,14 @@ def _component(
     file_name = (file_part or declared).strip()
     if not file_name:
         return None
-    file_path = (project.parent / file_name.replace("\\", "/")).resolve()
-    if not file_path.is_file():
+    try:
+        file_path = (project.parent / file_name.replace("\\", "/")).resolve()
+        present = file_path.is_file()
+    except (OSError, ValueError):
+        # A name no path can hold (a NUL byte, one too long): as missing as
+        # a file the folder does not have.
+        present = False
+    if not present:
         manifest.missing.append(file_name)
         return None
 

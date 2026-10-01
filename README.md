@@ -6,6 +6,7 @@
 [![CI](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/ci.yml)
 [![Security](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/security.yml)
 [![Malware scan](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml/badge.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/actions/workflows/malware-scan.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/WilliamSmithEdward/xlide_mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/WilliamSmithEdward/xlide_mcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/WilliamSmithEdward/xlide_mcp/blob/main/LICENSE)
 [![Downloads](https://static.pepy.tech/badge/xlide-mcp/month)](https://pepy.tech/project/xlide-mcp)
 

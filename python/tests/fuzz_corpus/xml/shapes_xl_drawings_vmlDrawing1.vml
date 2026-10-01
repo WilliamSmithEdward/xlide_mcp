@@ -1,0 +1,50 @@
+<xml xmlns:v="urn:schemas-microsoft-com:vml"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel">
+ <o:shapelayout v:ext="edit">
+  <o:idmap v:ext="edit" data="1"/>
+ </o:shapelayout><v:shapetype id="_x0000_t201" coordsize="21600,21600" o:spt="201"
+  path="m,l,21600r21600,l21600,xe">
+  <v:stroke joinstyle="miter"/>
+  <v:path shadowok="f" o:extrusionok="f" strokeok="f" fillok="f" o:connecttype="rect"/>
+  <o:lock v:ext="edit" shapetype="t"/>
+ </v:shapetype><v:shape id="RunButton" o:spid="_x0000_s1025" type="#_x0000_t201"
+  style='position:absolute;margin-left:48pt;margin-top:14.5pt;width:90pt;
+  height:24pt;z-index:1;mso-wrap-style:tight' o:button="t" fillcolor="buttonFace [67]"
+  o:insetmode="auto">
+  <v:fill color2="buttonFace [67]" o:detectmouseclick="t"/>
+  <o:lock v:ext="edit" rotation="t"/>
+  <v:textbox style='mso-direction-alt:auto' o:singleclick="f">
+   <div style='text-align:center'><font face="Aptos Narrow" size="220"
+   color="#000000">Run it</font></div>
+  </v:textbox>
+  <x:ClientData ObjectType="Button">
+   <x:Anchor>
+    1, 0, 1, 0, 2, 84, 2, 19</x:Anchor>
+   <x:PrintObject>False</x:PrintObject>
+   <x:AutoFill>False</x:AutoFill>
+   <x:FmlaMacro>[1]!Module1.DoTheThing</x:FmlaMacro>
+   <x:TextHAlign>Center</x:TextHAlign>
+   <x:TextVAlign>Center</x:TextVAlign>
+  </x:ClientData>
+ </v:shape><v:shape id="Ready" o:spid="_x0000_s1026" type="#_x0000_t201"
+  style='position:absolute;margin-left:48pt;margin-top:72.5pt;width:100pt;
+  height:18pt;z-index:2;mso-wrap-style:tight' filled="f" fillcolor="windowText [64]"
+  stroked="f" strokecolor="window [65]" strokeweight="3e-5mm" o:insetmode="auto">
+  <v:fill color2="window [65]"/>
+  <v:path shadowok="t" strokeok="t" fillok="t"/>
+  <o:lock v:ext="edit" rotation="t"/>
+  <v:textbox style='mso-direction-alt:auto' o:singleclick="f">
+   <div style='text-align:left'><font face="Segoe UI" size="160" color="auto">Ready?</font></div>
+  </v:textbox>
+  <x:ClientData ObjectType="Checkbox">
+   <x:SizeWithCells/>
+   <x:Anchor>
+    1, 0, 5, 0, 3, 8, 6, 7</x:Anchor>
+   <x:AutoFill>False</x:AutoFill>
+   <x:AutoLine>False</x:AutoLine>
+   <x:TextVAlign>Center</x:TextVAlign>
+   <x:FmlaLink>$D$6</x:FmlaLink>
+   <x:NoThreeD/>
+  </x:ClientData>
+ </v:shape></xml>

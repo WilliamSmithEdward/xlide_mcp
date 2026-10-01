@@ -1,0 +1,1 @@
+=XLOOKUP(1,A:A,B:B)

@@ -1,0 +1,12 @@
+# What the container image installs, pinned with hashes: the runtime
+# dependencies, and setuptools and wheel to build the package itself, which
+# the Dockerfile installs with --no-deps --no-build-isolation after this lock.
+# The image runs Python 3.12 on Linux:
+#   uv pip compile image.in --universal --generate-hashes --python-version 3.12 -o image.txt
+# Dependabot proposes each new release.
+mcp==2.2.0
+pyopenvba==6.3.4
+pyofficeeditor==0.4.1
+pyvbaanalysis==2.3.1
+setuptools==84.0.0
+wheel==0.48.0
