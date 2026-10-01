@@ -26,9 +26,15 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y git \
     && rm -rf /var/lib/apt/lists/*
 
+# The dependencies come from a hash-locked file, so every build of the image
+# installs the same ones; the package itself then installs without resolving.
 WORKDIR /src
+COPY .github/requirements/image.txt /tmp/image.txt
 COPY python/ /src/
-RUN pip install --no-cache-dir . && rm -rf /src
+RUN pip install --no-cache-dir --require-hashes -r /tmp/image.txt \
+    && pip wheel --no-cache-dir --no-deps --no-build-isolation --wheel-dir /tmp/wheel . \
+    && pip install --no-cache-dir --no-deps /tmp/wheel/*.whl \
+    && rm -rf /src /tmp/image.txt /tmp/wheel
 
 # A non-root user, because this reads and writes files a caller mounts in.
 RUN useradd --create-home --uid 1000 xlide
