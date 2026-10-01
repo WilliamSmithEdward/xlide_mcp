@@ -1,0 +1,17 @@
+# Test tooling for the CI and Publish test gates, pinned with hashes so a run
+# installs exactly what was reviewed, with the runtime dependencies at the
+# versions the conformance corpus is run against. The package itself installs
+# afterwards with --no-deps --no-build-isolation, so setuptools and wheel, its
+# build backend, come from this lock too. Compiled for the oldest Python the
+# test matrix runs, so one lock serves 3.10 to 3.13 on every runner:
+#   uv pip compile test.in --universal --generate-hashes --python-version 3.10 -o test.txt
+# Dependabot proposes each new release.
+pytest==9.1.1
+pytest-timeout==2.4.0
+ruff==0.16.8
+mcp==2.2.0
+pyopenvba==6.3.4
+pyofficeeditor==0.4.1
+pyvbaanalysis==2.3.1
+setuptools==84.0.0
+wheel==0.48.0

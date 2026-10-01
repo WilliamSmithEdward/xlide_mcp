@@ -50,7 +50,9 @@ jobs:
           echo "Version check passed: $PKG"
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: |
+          python -m pip install --require-hashes -r ../.github/requirements/test.txt
+          python -m pip install --no-deps --no-build-isolation -e .
 
       - name: Test
         run: python -m pytest
@@ -116,9 +118,19 @@ jobs:
       # Signed build provenance: `gh attestation verify <file> --owner
       # WilliamSmithEdward` shows which commit and run built a distribution.
       - name: Attest the distributions
+        id: attest
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: dist/*
+
+      # The signed bundle goes on the GitHub release too, so a download can be
+      # checked offline: gh attestation verify <file> --bundle <bundle>.
+      - name: Keep the provenance bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: provenance
+          path: ${{ steps.attest.outputs.bundle-path }}
+          if-no-files-found: error
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
@@ -216,6 +228,13 @@ jobs:
           name: malware-report
           path: security-report/
 
+      - name: Download the provenance bundle
+        if: env.DRY_RUN != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: provenance
+          path: provenance/
+
       - name: Name security files after the release
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -223,6 +242,10 @@ jobs:
           for file in security-report/*; do
             mv "$file" "security-report/xlide-mcp-$VERSION-$(basename "$file")"
           done
+          if [ "$DRY_RUN" != true ]; then
+            test "$(find provenance -type f | wc -l)" = 1
+            mv provenance/* "provenance/xlide-mcp-$VERSION.sigstore.json"
+          fi
 
       - name: Extract changelog section for this tag
         id: notes
@@ -263,4 +286,5 @@ jobs:
           files: |
             dist/*
             security-report/*
+            provenance/*
           fail_on_unmatched_files: true
