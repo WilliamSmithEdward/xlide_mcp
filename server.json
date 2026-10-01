@@ -7,12 +7,12 @@
     "url": "https://github.com/WilliamSmithEdward/xlide_mcp",
     "source": "github"
   },
-  "version": "1.2.2",
+  "version": "1.2.3",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "xlide-mcp",
-      "version": "1.2.2",
+      "version": "1.2.3",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
