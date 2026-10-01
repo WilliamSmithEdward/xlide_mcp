@@ -1,0 +1,13 @@
+# Fuzzing for the Fuzz workflow: Atheris, Google's coverage-guided fuzzer
+# for Python, which ships Linux wheels for CPython 3.12 to 3.14, with the
+# runtime dependencies. The package installs afterwards with --no-deps
+# --no-build-isolation, so setuptools and wheel come from this lock too.
+#   uv pip compile fuzz.in --universal --generate-hashes --python-version 3.12 -o fuzz.txt
+# Dependabot proposes each new release.
+atheris==3.1.0
+mcp==2.2.0
+pyopenvba==6.3.4
+pyofficeeditor==0.4.1
+pyvbaanalysis==2.3.1
+setuptools==84.0.0
+wheel==0.48.0
