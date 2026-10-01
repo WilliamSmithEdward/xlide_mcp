@@ -231,3 +231,15 @@ def test_a_vb6_project_has_no_userform_designer(
     so the designer tools report none rather than pretending."""
     listed = call("xlide_list_forms", file_path=str(vb6_project))
     assert listed["count"] == 0
+
+
+def test_a_module_path_no_file_can_have_is_missing(tmp_path: Path) -> None:
+    # Found by fuzzing: a NUL in a module line raised ValueError out of
+    # pathlib rather than being reported like any file the folder lacks.
+    from xlide_mcp.vb6 import Vb6Project
+
+    manifest = tmp_path / "Bad.vbp"
+    manifest.write_bytes(b'Type=Exe\r\nModule=Helpers; Help\x00ers.bas\r\nName="Bad"\r\n')
+    project = Vb6Project(manifest)
+    assert project.module_names() == []
+    assert len(project.validate()) == 1

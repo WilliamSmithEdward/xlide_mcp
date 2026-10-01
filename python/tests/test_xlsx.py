@@ -19,6 +19,7 @@ from xlide_mcp.xlsx import (
     Workbook,
     XlsxError,
     column_to_index,
+    decode_xml,
     formula_for_display,
     formula_for_file,
     index_to_column,
@@ -372,3 +373,15 @@ def test_a_huge_range_is_refused_rather_than_returned(
             cell_range="A1:Z10000",
         )
     assert "Read it in blocks" in refusal.value.message
+
+
+def test_character_references_decode() -> None:
+    assert decode_xml("&#65;&#x42;&#x10FFFF;&amp;") == "AB\U0010FFFF&"
+
+
+@pytest.mark.parametrize("reference", ["&#x110000;", "&#1114112;", "&#" + "9" * 30 + ";"])
+def test_a_reference_past_unicode_is_refused(reference: str) -> None:
+    # Found by fuzzing: chr() raised ValueError, or OverflowError past a C int,
+    # out of the drawing layer rather than a ToolError.
+    with pytest.raises(XlsxError, match="names no character"):
+        decode_xml(reference)

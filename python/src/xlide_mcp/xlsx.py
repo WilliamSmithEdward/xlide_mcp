@@ -112,15 +112,23 @@ def next_tag(xml: str, start: int) -> Tag | None:
 _ENTITY_RE = re.compile(r"&#x([0-9a-fA-F]+);|&#(\d+);")
 
 
+def _character(match: re.Match[str]) -> str:
+    """The character a `&#...;` reference names. One past U+10FFFF names none:
+    the part is not well-formed, and chr() would raise ValueError or, for a
+    number past a C int, OverflowError."""
+    code = int(match.group(1), 16) if match.group(1) else int(match.group(2))
+    if code > 0x10FFFF:
+        raise XlsxError(f"The part holds {match.group(0)!r}, which names no character.")
+    return chr(code)
+
+
 def decode_xml(text: str) -> str:
     # [XML] 2.11 normalizes line endings before entities expand, so a literal CRLF
     # becomes LF while an explicit &#13; survives as CR.
     normalized = text.replace("\r\n", "\n").replace("\r", "\n") if "\r" in text else text
     if "&" not in normalized:
         return normalized
-    normalized = _ENTITY_RE.sub(
-        lambda m: chr(int(m.group(1), 16)) if m.group(1) else chr(int(m.group(2))), normalized
-    )
+    normalized = _ENTITY_RE.sub(_character, normalized)
     return (
         normalized.replace("&lt;", "<")
         .replace("&gt;", ">")

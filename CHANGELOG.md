@@ -3,6 +3,42 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [Unreleased]
+
+The tools and their answers are unchanged: 65 tools and 142 conformance cases.
+
+### Fixed
+
+- A drawing part holding a character reference past U+10FFFF, such as
+  `&#x110000;` or one with thirty digits, raised `ValueError` or
+  `OverflowError` out of the shape reader. It is now refused with a tool error
+  naming the reference.
+- A `.vbp` module line whose path no file can have, one holding a NUL byte,
+  raised `ValueError` on Linux and macOS. The module is now reported missing,
+  as one the folder does not hold is.
+
+### Added
+
+- Coverage-guided fuzzing with Atheris of the drawing layer's tag scanner and
+  entity decoder, cell and range references, and the VB6 manifest reader
+  (`python/fuzz/fuzz_server.py`), which found both fixes above. The Fuzz
+  workflow runs it daily and on every change, and the suite replays the seed
+  corpus.
+- Releases carry signed build provenance: the signed bundle from GitHub's
+  artifact attestations goes on the GitHub release as
+  `xlide-mcp-<version>.sigstore.json`.
+- OpenSSF Scorecard rates the repository's security practices on every change
+  to main and weekly, and the README shows its badge.
+
+### Changed
+
+- CI and the release's test step install the test tools and the runtime
+  dependencies from a hash-locked lock (`.github/requirements/test.txt`)
+  instead of resolving the dev extra at run time.
+- The container image installs its dependencies from a hash-locked lock
+  (`.github/requirements/image.txt`) and then the server with `--no-deps`, so
+  every build of the image runs the same versions.
+
 ## [1.2.2]
 
 A security and supply-chain patch. The server's tools and their answers are
