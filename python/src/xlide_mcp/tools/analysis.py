@@ -201,7 +201,8 @@ def register(server: MCPServer, settings: Settings) -> None:
                 default="",
                 description=(
                     "An existing Office file this module belongs to. Its other modules are "
-                    "analyzed alongside, so calls into them resolve. Overrides host."
+                    "read as context, so calls into them resolve; only this source is "
+                    "analyzed. Overrides host."
                 ),
             ),
         ] = "",

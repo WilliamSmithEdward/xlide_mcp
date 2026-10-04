@@ -1,10 +1,10 @@
 {
   "contract_version": "1.2.3",
-  "digest": "sha256:caf6fdc94720747c9d7f18f4db9bed776757362a4069c7f762f495254d969017",
+  "digest": "sha256:a5645c48ccdd2756c47ab99cd608a049547b438d11d14fe9409cb7a5de137ece",
   "generated_with": {
     "upstream": {
       "pyOfficeEditor": "0.4.1",
-      "pyOpenVBA": "6.3.3",
+      "pyOpenVBA": "6.3.5",
       "pyvbaanalysis": "2.3.1",
       "pyvbaharness": "1.1.6"
     }
@@ -221,7 +221,7 @@
         "properties": {
           "file_path": {
             "default": "",
-            "description": "An existing Office file this module belongs to. Its other modules are analyzed alongside, so calls into them resolve. Overrides host.",
+            "description": "An existing Office file this module belongs to. Its other modules are read as context, so calls into them resolve; only this source is analyzed. Overrides host.",
             "title": "File Path",
             "type": "string"
           },
