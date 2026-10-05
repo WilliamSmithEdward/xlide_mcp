@@ -12,6 +12,6 @@ ruff==0.16.9
 mcp==2.2.0
 pyopenvba==6.3.5
 pyofficeeditor==0.4.1
-pyvbaanalysis==2.3.1
+pyvbaanalysis==3.0.0
 setuptools==84.0.0
 wheel==0.48.0
