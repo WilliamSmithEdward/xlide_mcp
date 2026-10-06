@@ -175,6 +175,82 @@ def test_analyze_source_against_a_project_resolves_its_calls(
     assert alone["counts"]["error"] >= with_project["counts"]["error"]
 
 
+def test_analyze_source_against_a_project_reports_what_analyze_would(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    # A draft checked against a project has to get the findings it would get once
+    # written into it. The project also holds a module with problems of its own,
+    # which are not the draft's: the comparison below is against the draft's
+    # findings alone, so one of Elsewhere's reaching the report would fail it.
+    call(
+        "xlide_write_module",
+        file_path=str(workbook),
+        module_name="Elsewhere",
+        source=BROKEN.replace("\n", "\r\n"),
+    )
+    draft = (CALLS_HELPERS + BROKEN.replace("Option Explicit\n", "")).replace("\n", "\r\n")
+    as_draft = call(
+        "xlide_analyze_source", source=draft, module_name="Draft", file_path=str(workbook)
+    )
+    assert as_draft["counts"]["error"] >= 1
+
+    call("xlide_write_module", file_path=str(workbook), module_name="Draft", source=draft)
+    written = call("xlide_analyze", file_path=str(workbook), module_name="Draft")
+
+    def key(problem: dict[str, Any]) -> tuple[Any, ...]:
+        return tuple(problem.get(k) for k in ("line", "column", "severity", "code", "message"))
+
+    assert as_draft["matching_count"] == len(as_draft["problems"])
+    assert sorted(map(key, as_draft["problems"])) == sorted(map(key, written["problems"]))
+    assert not [p for p in as_draft["problems"] if "AddNums" in p["message"]], (
+        "AddNums lives in Helpers and must resolve against the file"
+    )
+
+
+def test_analyze_source_against_a_project_analyzes_only_the_draft(
+    call: Callable[..., Any], workbook: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import pyvbaanalysis
+
+    calls: list[tuple[list[Any], dict[str, Any]]] = []
+    analyze_project = pyvbaanalysis.analyze_project
+
+    def spy_analyze(modules: Any, **kwargs: Any) -> Any:
+        inputs = list(modules)
+        calls.append((inputs, kwargs))
+        return analyze_project(inputs, **kwargs)
+
+    monkeypatch.setattr(pyvbaanalysis, "analyze_project", spy_analyze)
+    report = call(
+        "xlide_analyze_source",
+        source=CALLS_HELPERS.replace("\n", "\r\n"),
+        module_name="Draft",
+        file_path=str(workbook),
+    )
+
+    assert report["counts"]["error"] == 0
+    assert len(calls) == 1
+    inputs, options = calls[0]
+    assert options["only"] == ["Draft"]
+    assert {"Draft", "Helpers"} <= {module.module_name for module in inputs}
+
+
+def test_analyze_source_replaces_the_module_of_its_name_whatever_the_case(
+    call: Callable[..., Any], workbook: Path
+) -> None:
+    # VBA compares names without case, so a draft called "helpers" stands in for
+    # Helpers rather than colliding with it, and is the module reported on.
+    report = call(
+        "xlide_analyze_source",
+        source=BROKEN.replace("\n", "\r\n"),
+        module_name="helpers",
+        file_path=str(workbook),
+    )
+    assert report["module"] == "helpers"
+    assert report["counts"]["error"] >= 1
+    assert report["verdict"] == "errors found"
+
+
 def test_bad_severity_and_host_are_refused(call: Callable[..., Any], workbook: Path) -> None:
     with pytest.raises(ToolFailure):
         call("xlide_analyze", file_path=str(workbook), min_severity="loud")
