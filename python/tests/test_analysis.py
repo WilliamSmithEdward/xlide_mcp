@@ -210,30 +210,17 @@ def test_analyze_source_against_a_project_reports_what_analyze_would(
 def test_analyze_source_against_a_project_analyzes_only_the_draft(
     call: Callable[..., Any], workbook: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # The other modules are indexed so the draft's calls resolve, and not analyzed:
-    # their findings are never reported here, and on a large project working them
-    # out was most of what the call cost.
     import pyvbaanalysis
-    import pyvbaanalysis.project as analyzer
 
-    analyzed: list[str] = []
-    indexed: list[str] = []
-    analyze_module = analyzer.analyze_module
-    build_project_index = analyzer.build_project_index
+    calls: list[tuple[list[Any], dict[str, Any]]] = []
+    analyze_project = pyvbaanalysis.analyze_project
 
-    def spy_analyze(source: str, options: Any) -> Any:
-        analyzed.append(options.module_name)
-        return analyze_module(source, options)
+    def spy_analyze(modules: Any, **kwargs: Any) -> Any:
+        inputs = list(modules)
+        calls.append((inputs, kwargs))
+        return analyze_project(inputs, **kwargs)
 
-    def spy_index(modules: Any, **kwargs: Any) -> Any:
-        listed = list(modules)
-        indexed.extend(m.module_name for m in listed)
-        return build_project_index(listed, **kwargs)
-
-    monkeypatch.setattr(analyzer, "analyze_module", spy_analyze)
-    monkeypatch.setattr(analyzer, "build_project_index", spy_index)
-    assert pyvbaanalysis.analyze_project is analyzer.analyze_project
-
+    monkeypatch.setattr(pyvbaanalysis, "analyze_project", spy_analyze)
     report = call(
         "xlide_analyze_source",
         source=CALLS_HELPERS.replace("\n", "\r\n"),
@@ -242,8 +229,10 @@ def test_analyze_source_against_a_project_analyzes_only_the_draft(
     )
 
     assert report["counts"]["error"] == 0
-    assert analyzed == ["Draft"]
-    assert "Helpers" in indexed and "Draft" in indexed
+    assert len(calls) == 1
+    inputs, options = calls[0]
+    assert options["only"] == ["Draft"]
+    assert {"Draft", "Helpers"} <= {module.module_name for module in inputs}
 
 
 def test_analyze_source_replaces_the_module_of_its_name_whatever_the_case(

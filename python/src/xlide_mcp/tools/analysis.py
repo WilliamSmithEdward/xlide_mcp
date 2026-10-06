@@ -246,10 +246,7 @@ def register(server: MCPServer, settings: Settings) -> None:
                 f"{host!r} is not a host. Use 'excel', 'word', 'powerpoint' or 'access'."
             )
 
-        # The rest of the project is context, not the question. `only` still indexes
-        # every module, so calls into them resolve, and analyzes just this one:
-        # the others' findings were never reported here, and working them out was
-        # most of the time a check of one draft took.
+        # Index the whole project for context, but analyze only the draft.
         by_module = analyze_project(
             inputs, only=[module_name], host=resolved_host, referenced_hosts=referenced
         )
