@@ -6,7 +6,7 @@
 # Dependabot proposes each new release.
 atheris==3.1.0
 mcp==2.2.0
-pyopenvba==6.3.5
+pyopenvba==6.5.0
 pyofficeeditor==0.4.1
 pyvbaanalysis==2.3.1
 setuptools==84.0.0

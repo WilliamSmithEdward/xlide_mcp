@@ -9,6 +9,6 @@
 # supports:
 #   uv pip compile runtime.in --universal --generate-hashes --python-version 3.10 -o runtime.txt
 mcp==2.2.0
-pyopenvba==6.3.5
+pyopenvba==6.5.0
 pyofficeeditor==0.4.1
 pyvbaanalysis==2.3.1
