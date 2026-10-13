@@ -3,6 +3,20 @@
 Notable changes to `xlide-mcp`. The version lives in
 `python/src/xlide_mcp/_version.py`, and a `v*.*.*` tag releases it.
 
+## [1.2.4]
+
+A performance patch. 65 tools and 143 conformance cases, as in 1.2.3.
+
+### Changed
+
+- `xlide_analyze_source` with a `file_path` analyzes only the draft. It used to
+  analyze every module in the file and keep the draft's findings; the other
+  modules are now read only as context, so calls into them still resolve. On a
+  14-module workbook a check took about half the time, and Sam's measurement on
+  a larger one went from 10.5 s to 1.5 s. A failure inside another module's
+  checks no longer fails the draft's (#23, thanks to @swsammy).
+- pyVBAanalysis 3 is allowed, alongside 2.3.1 and later (#26).
+
 ## [1.2.3]
 
 A security patch. The tools are unchanged; one answer is new: 65 tools and
