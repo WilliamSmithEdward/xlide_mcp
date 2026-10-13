@@ -190,6 +190,10 @@ cryptography==50.0.2 \
     --hash=sha256:fa8f5efb344d6908a1ce62f4a24e2e5780f825d6f53f5f50ec5ffacac72936cb \
     --hash=sha256:fdd28f912fccfec1846a94e2e1e8f9b0012f557f0c46fe4f3eb0d7a87afcf90b
     # via pyjwt
+defusedxml==0.7.1 \
+    --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
+    --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
+    # via pyvbaanalysis
 h11==0.16.0 ; sys_platform != 'emscripten' \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
@@ -388,9 +392,9 @@ python-multipart==0.0.32 \
     --hash=sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e \
     --hash=sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23
     # via mcp
-pyvbaanalysis==2.3.1 \
-    --hash=sha256:05a93bff42762a6bf6d16975195924590f6ad812cf5f69869df7cf3e0f076365 \
-    --hash=sha256:cbb91d8a22a997ec207cf047dbe6048a29a169a7af7e4bebb3cf19802187664e
+pyvbaanalysis==3.0.0 \
+    --hash=sha256:348df77a44000da7cc172c251f6a6f5ef807c01efe22a87e5c359e97b0f035d6 \
+    --hash=sha256:8fc4167a89d0e8361e20b4fef62d04c20413c14aada400b87c983d8b66229199
     # via -r fuzz.in
 pywin32==312 ; sys_platform == 'win32' \
     --hash=sha256:02ebca0f0242b75292e218065004310d6a477407c09fa449bfe4f6022bc0c0fc \
