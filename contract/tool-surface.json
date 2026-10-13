@@ -1,12 +1,12 @@
 {
-  "contract_version": "1.2.3",
+  "contract_version": "1.2.4",
   "digest": "sha256:a5645c48ccdd2756c47ab99cd608a049547b438d11d14fe9409cb7a5de137ece",
   "generated_with": {
     "upstream": {
       "pyOfficeEditor": "0.4.1",
-      "pyOpenVBA": "6.3.5",
-      "pyvbaanalysis": "2.3.1",
-      "pyvbaharness": "1.1.6"
+      "pyOpenVBA": "6.5.0",
+      "pyvbaanalysis": "3.0.0",
+      "pyvbaharness": "not installed"
     }
   },
   "reference_implementation": "python",
