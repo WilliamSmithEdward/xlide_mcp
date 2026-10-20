@@ -18,7 +18,7 @@
 
 # Pinned by digest to the multi-platform image index; Dependabot proposes new
 # 3.12 releases.
-FROM python:3.12.14-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
+FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 # Nothing in the file layer shells out except git, which xlide_git_changes uses
 # to read a blob at a revision.
