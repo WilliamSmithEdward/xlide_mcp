@@ -8,10 +8,10 @@
 # Dependabot proposes each new release.
 pytest==9.1.1
 pytest-timeout==2.4.0
-ruff==0.16.10
-mcp==2.2.0
+ruff==0.17.0
+mcp==2.3.0
 pyopenvba==6.5.0
 pyofficeeditor==0.4.1
-pyvbaanalysis==3.0.0
+pyvbaanalysis==3.0.1
 setuptools==84.0.0
 wheel==0.48.0
