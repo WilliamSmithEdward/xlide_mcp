@@ -9,5 +9,5 @@ mcp==2.3.0
 pyopenvba==6.5.0
 pyofficeeditor==0.4.1
 pyvbaanalysis==3.0.1
-setuptools==84.2.0
+setuptools==84.2.1
 wheel==0.48.0
