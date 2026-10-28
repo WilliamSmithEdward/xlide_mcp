@@ -7,5 +7,5 @@
 # --no-isolation, so they come from this lock rather than a fresh download.
 build==1.6.1
 twine==7.0.0
-setuptools==84.0.0
+setuptools==84.2.0
 wheel==0.48.0
