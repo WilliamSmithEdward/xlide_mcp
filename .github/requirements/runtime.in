@@ -11,4 +11,4 @@
 mcp==2.3.0
 pyopenvba==6.5.0
 pyofficeeditor==0.4.1
-pyvbaanalysis==3.0.1
+pyvbaanalysis==3.0.2
