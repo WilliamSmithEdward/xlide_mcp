@@ -421,9 +421,9 @@ python-multipart==0.0.32 \
     --hash=sha256:be54b7f3fa167bb83e4fcd936b887b708f4e57fe75911c02aebf53efaf8d938e \
     --hash=sha256:ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23
     # via mcp
-pyvbaanalysis==3.0.1 \
-    --hash=sha256:7f902823dabe256dcd160d905fe28aaf51519f7b0e8f7c37ad61f5ecd9d9ceff \
-    --hash=sha256:faacfcb8c070571338966fe28c267b6938f488f58b4bd4ca643a25c201703bff
+pyvbaanalysis==3.0.2 \
+    --hash=sha256:98473ab07beeb0e179bf3a40058ed611af7e00f96d3e1e9fe27056fdceabed22 \
+    --hash=sha256:d91116510b44f3259f619a9be0a175e7cfa204f157aa7fa6695eff67f8ceef37
     # via -r test.in
 pywin32==312 ; sys_platform == 'win32' \
     --hash=sha256:02ebca0f0242b75292e218065004310d6a477407c09fa449bfe4f6022bc0c0fc \
