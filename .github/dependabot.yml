@@ -1,6 +1,7 @@
 # Dependabot proposes updates for the upstream libraries, CI actions, the
-# build tools, the server image's Python base and the Semgrep and ClamAV
-# images the scans run. The
+# build tools, the server image's Python base and the ClamAV image the
+# malware scan runs. update-semgrep-image.yml moves the Semgrep image,
+# whose Dependabot updates GitHub refuses. The
 # YARA Forge rules have their own weekly updater, update-yara-rules.yml. Review upstream library PRs
 # against the conformance corpus before merging; no update is automatic.
 #
@@ -40,11 +41,10 @@ updates:
         patterns: ["*"]
         update-types: [minor, patch]
 
-  # The Semgrep and ClamAV images the scans run, each pinned by digest in a
-  # one-line Dockerfile.
+  # The ClamAV image the malware scan runs, pinned by digest in a one-line
+  # Dockerfile.
   - package-ecosystem: docker
     directories:
-      - /.github/security/semgrep
       - /.github/security/clamav
     schedule:
       interval: weekly
