@@ -138,15 +138,16 @@ by hand. ClamAV's signatures change too often to pin, so freshclam fetches
 and verifies them on every run. The Semgrep rule sets are fetched from the
 Semgrep registry on every run.
 
-Dependabot proposes updates to the GitHub Actions, the ClamAV image, the
-container image's Python base (3.12 releases only), the dependencies in
+Dependabot proposes updates to the GitHub Actions, the container image's
+Python base (3.12 releases only), the dependencies in
 `python/pyproject.toml` and the lock files in `.github/requirements` once a
 version is a week old, and at once for a security advisory. The Update YARA
-rules workflow proposes new YARA pins each week, and the Update Semgrep
-image workflow a new Semgrep image once it is a week old (GitHub refuses
-Dependabot's updates of that image). A minor or patch update, and the YARA
-and Semgrep pull requests, merge themselves once CI, Security and Malware
-scan pass; a third-party major version waits for review.
+rules workflow proposes new YARA pins each week. The Update images workflow
+proposes new ClamAV and Semgrep images once they are a week old, including
+a version rebuilt in place (GitHub refuses Dependabot's image updates). A
+minor or patch update, and the YARA and image pull requests, merge
+themselves once CI, Security and Malware scan pass; a third-party major
+version waits for review.
 
 ## Releases
 
