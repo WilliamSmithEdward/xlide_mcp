@@ -6,7 +6,7 @@
 # test matrix runs, so one lock serves 3.10 to 3.13 on every runner:
 #   uv pip compile test.in --universal --generate-hashes --python-version 3.10 -o test.txt
 # Dependabot proposes each new release.
-pytest==9.1.1
+pytest==9.2.0
 pytest-timeout==2.4.0
 ruff==0.17.3
 mcp==2.3.0
